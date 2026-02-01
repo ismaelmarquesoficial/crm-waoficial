@@ -12,4 +12,5 @@ const pool = new Pool({
 
 module.exports = {
     query: (text, params) => pool.query(text, params),
+    pool // Exportando o pool também para permitir transactions
 };

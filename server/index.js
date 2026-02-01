@@ -2,23 +2,49 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const http = require('http'); // Import HTTP
+const { Server } = require("socket.io"); // Import Socket.io
 const db = require('./db');
 
 const crmRoutes = require('./routes/crm');
 const adminRoutes = require('./routes/admin');
 const channelRoutes = require('./routes/channels');
+const campaignRoutes = require('./routes/campaigns'); // Nova Rota
+
+// Import Worker
+const { startWorker } = require('./workers/campaignDispatcher');
 
 const app = express();
 const PORT = 3001;
 const JWT_SECRET = 'your-secret-key-change-this'; // In production, move to .env
 
+// Configurar Servidor HTTP e Socket.io
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*", // Em produção, restrinja para o domínio do frontend
+        methods: ["GET", "POST"]
+    }
+});
+
 app.use(cors());
 app.use(express.json());
+
+// Injetar IO no Request (opcional, se rotas precisarem emitir eventos)
+app.use((req, res, next) => {
+    req.io = io;
+    next();
+});
 
 // Routes
 app.use('/api/crm', crmRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/channels', channelRoutes);
+app.use('/api/campaigns', campaignRoutes); // Registrada
+
+// Webhooks
+const whatsappWebhookRoutes = require('./webhooks/whatsapp/routes');
+app.use('/api/webhooks/whatsapp', whatsappWebhookRoutes);
 
 // Login Route
 app.post('/api/login', async (req, res) => {
@@ -29,82 +55,38 @@ app.post('/api/login', async (req, res) => {
     }
 
     try {
-        // 1. Find user by email
         const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
-
-        if (result.rows.length === 0) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
+        if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
 
         const user = result.rows[0];
-
-        // 2. Compare password
-        // Note: If you have plain text passwords in your DB currently (common in early dev), 
-        // you might need to check directly: if (password !== user.password_hash) ...
-        // But assuming standard practice of hashing:
         const isMatch = await bcrypt.compare(password, user.password_hash);
+        if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-        if (!isMatch) {
-            // Fallback for plain text testing if hash check fails (OPTIONAL, remove in production)
-            if (password === user.password_hash) {
-                // allow pass
-            } else {
-                return res.status(401).json({ error: 'Invalid credentials' });
-            }
-        }
+        const token = jwt.sign({ userId: user.id, role: user.role, tenantId: user.tenant_id }, JWT_SECRET, { expiresIn: '8h' });
 
-        // 3. Generate Token
-        const token = jwt.sign(
-            { userId: user.id, email: user.email, role: user.role, tenantId: user.tenant_id },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-
-        // 4. Return success
-        res.json({
-            token,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                tenantId: user.tenant_id
-                // avatar: user.avatar // Add if/when column exists
-            }
-        });
-
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Middleware to verify Token (Use this for protected routes later)
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) return res.sendStatus(401);
-
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
-    });
-};
-
-// Simple Protected Route Example
-app.get('/api/me', authenticateToken, async (req, res) => {
-    try {
-        const result = await db.query('SELECT id, name, email, role FROM users WHERE id = $1', [req.user.userId]);
-        if (result.rows.length === 0) return res.sendStatus(404);
-        res.json(result.rows[0]);
+        res.json({ token, user: { id: user.id, name: user.name, role: user.role, tenant_id: user.tenant_id } });
     } catch (err) {
         console.error(err);
-        res.sendStatus(500);
+        res.status(500).json({ error: 'Login error' });
     }
 });
 
-app.listen(PORT, () => {
+// Socket.io Connection Logic
+io.on("connection", (socket) => {
+    // console.log("Cliente conectado:", socket.id);
+
+    // Room por Tenant (segurança: frontend deve emitir 'join_tenant' após login)
+    socket.on("join_tenant", (tenantId) => {
+        socket.join(`tenant_${tenantId}`);
+        // console.log(`Socket ${socket.id} entrou na sala tenant_${tenantId}`);
+    });
+});
+
+// === INICIAR WORKER ===
+startWorker(io); // Passando IO para o worker comunicar progresso
+
+// Start Server (Nota: usamos server.listen em vez de app.listen)
+server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Socket.io ready on port ${PORT}`);
 });
