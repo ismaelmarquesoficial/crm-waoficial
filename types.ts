@@ -33,9 +33,9 @@ export interface Message {
 }
 
 export interface PipelineStage {
-  id: string;
-  title: string;
-  color: string;
+  id: string | number;
+  name: string;
+  color?: string;
 }
 
 export interface Campaign {

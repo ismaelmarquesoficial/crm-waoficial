@@ -11,14 +11,37 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
+    setError('');
+
+    try {
+      const response = await fetch('http://localhost:3001/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Falha no login');
+      }
+
+      // Success
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
       onLogin();
-    }, 1500);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -83,11 +106,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <p className="text-slate-500 mt-2">Insira suas credenciais para acessar o workspace.</p>
           </div>
 
+          {error && (
+            <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm border border-red-100 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-5">
               {/* Google Button */}
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 font-medium py-3 rounded-xl transition-all duration-200 group"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -125,10 +157,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
               {/* Password Input */}
               <div className="space-y-1.5">
-                 <div className="flex justify-between items-center">
-                    <label className="block text-sm font-semibold text-slate-700">Senha</label>
-                    <a href="#" className="text-xs font-medium text-meta hover:text-meta/80">Esqueceu a senha?</a>
-                 </div>
+                <div className="flex justify-between items-center">
+                  <label className="block text-sm font-semibold text-slate-700">Senha</label>
+                  <a href="#" className="text-xs font-medium text-meta hover:text-meta/80">Esqueceu a senha?</a>
+                </div>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Lock className="h-5 w-5 text-slate-400 group-focus-within:text-meta transition-colors" />
@@ -194,9 +226,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           </p>
 
           <div className="pt-8 border-t border-slate-100 flex items-center justify-center gap-6 text-slate-400 grayscale opacity-70">
-             <div className="flex items-center gap-1 text-xs font-semibold uppercase tracking-widest">
-               <ShieldCheck size={16} /> Enterprise Grade Security
-             </div>
+            <div className="flex items-center gap-1 text-xs font-semibold uppercase tracking-widest">
+              <ShieldCheck size={16} /> Enterprise Grade Security
+            </div>
           </div>
         </div>
       </div>
