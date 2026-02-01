@@ -184,4 +184,36 @@ router.patch('/:id/reschedule', async (req, res) => {
     }
 });
 
+// Excluir Campanha
+router.delete('/:id', async (req, res) => {
+    console.log(`🗑️ [API] DELETE Campaign ID: ${req.params.id} | Tenant: ${req.tenantId}`);
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { id } = req.params;
+
+        // 1. Apagar recipients (O histórico visual fica em chat_logs, então isso é seguro para limpeza)
+        await client.query("DELETE FROM campaign_recipients WHERE campaign_id = $1 AND tenant_id = $2", [id, req.tenantId]);
+
+        // 2. Apagar campanha
+        const result = await client.query("DELETE FROM campaigns WHERE id = $1 AND tenant_id = $2 RETURNING id", [id, req.tenantId]);
+
+        if (result.rowCount === 0) {
+            console.warn(`⚠️ [API] Delete falhou: Campanha ${id} não encontrada para Tenant ${req.tenantId}`);
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Campanha não encontrada.' });
+        }
+
+        await client.query('COMMIT');
+        console.log(`✅ [API] Delete Sucesso: Campanha ${id}`);
+        res.json({ message: 'Campanha excluída com sucesso.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ error: 'Erro ao excluir campanha.' });
+    } finally {
+        client.release();
+    }
+});
+
 module.exports = router;

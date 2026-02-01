@@ -77,95 +77,110 @@ const processBatch = async () => {
 
         if (messages.length === 0) return;
 
-        const promises = messages.map(async (msg) => {
-            try {
-                // Monta Payload Inteligente Usando o BLUEPRINT do Banco
-                const payload = buildMetaPayload(
-                    msg.phone,
-                    msg.template_name,
-                    msg.template_lang,
-                    msg.header_vars_count || 0,
-                    msg.body_vars_count || 0,
-                    msg.header_var_names || [],
-                    msg.body_var_names || [],
-                    msg.variables
-                );
+        // Agrupar mensagens por Tenant para paralelizar o atraso
+        const msgsByTenant = messages.reduce((acc, msg) => {
+            if (!acc[msg.tenant_id]) acc[msg.tenant_id] = [];
+            acc[msg.tenant_id].push(msg);
+            return acc;
+        }, {});
 
-                // DEBUG PAYLOAD
-                console.log(`📦 [WORKER] Payload para ${msg.phone}:`, JSON.stringify(payload.template.components));
+        // Disparar processamento paralelo POR TENANT
+        // Cada tenant roda seu fluxo sequencial com delay, independente dos outros
+        await Promise.all(Object.keys(msgsByTenant).map(async (tenantId) => {
+            const tenantMsgs = msgsByTenant[tenantId];
 
-                // Envio para META
-                const url = `https://graph.facebook.com/v21.0/${msg.phone_number_id}/messages`;
-                const metaRes = await axios.post(url, payload, {
-                    headers: {
-                        Authorization: `Bearer ${msg.permanent_token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                const metaId = metaRes.data?.messages?.[0]?.id;
-                console.log(`✅ [WORKER] Sucesso msg ${msg.id}: ID Meta ${metaId}`);
-
-                // Atualizar status no DB
-                await db.query(
-                    "UPDATE campaign_recipients SET status = 'sent', message_id = $1, updated_at = NOW() WHERE id = $2",
-                    [metaId, msg.id]
-                );
-
-                // SALVAR NO HISTÓRICO DE CHAT (Para aparecer no CRM)
-                let bodyText = `[Template: ${msg.template_name}]`;
+            for (const msg of tenantMsgs) {
                 try {
-                    const comps = typeof msg.template_components === 'string' ? JSON.parse(msg.template_components) : msg.template_components;
-                    const body = comps.find(c => c.type === 'BODY');
-                    if (body && body.text) bodyText = body.text;
+                    // Monta Payload Inteligente Usando o BLUEPRINT do Banco
+                    const payload = buildMetaPayload(
+                        msg.phone,
+                        msg.template_name,
+                        msg.template_lang,
+                        msg.header_vars_count || 0,
+                        msg.body_vars_count || 0,
+                        msg.header_var_names || [],
+                        msg.body_var_names || [],
+                        msg.variables
+                    );
 
-                    // Substituição Visual para o Chatlog (apenas visual)
-                    if (msg.variables && Array.isArray(msg.variables)) {
-                        // Lógica simplificada de visualização: substitui sequencialmente
-                        msg.variables.sort((a, b) => a - b).forEach((v, i) => {
-                            const val = (v === null || v === undefined) ? '' : String(v);
-                            bodyText = bodyText.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, 'g'), val);
+                    // DEBUG PAYLOAD
+                    console.log(`📦 [WORKER T:${tenantId}] Payload para ${msg.phone}:`, JSON.stringify(payload.template.components));
+
+                    // Envio para META
+                    const url = `https://graph.facebook.com/v21.0/${msg.phone_number_id}/messages`;
+                    const metaRes = await axios.post(url, payload, {
+                        headers: {
+                            Authorization: `Bearer ${msg.permanent_token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    const metaId = metaRes.data?.messages?.[0]?.id;
+                    console.log(`✅ [WORKER T:${tenantId}] Sucesso msg ${msg.id}: ID Meta ${metaId}`);
+
+                    // Atualizar status no DB
+                    await db.query(
+                        "UPDATE campaign_recipients SET status = 'sent', message_id = $1, updated_at = NOW() WHERE id = $2",
+                        [metaId, msg.id]
+                    );
+
+                    // SALVAR NO HISTÓRICO DE CHAT (Para aparecer no CRM)
+                    let bodyText = `[Template: ${msg.template_name}]`;
+                    try {
+                        const comps = typeof msg.template_components === 'string' ? JSON.parse(msg.template_components) : msg.template_components;
+                        const body = comps.find(c => c.type === 'BODY');
+                        if (body && body.text) bodyText = body.text;
+
+                        // Substituição Visual para o Chatlog (apenas visual)
+                        if (msg.variables && Array.isArray(msg.variables)) {
+                            [...msg.variables].sort((a, b) => {
+                                return String(a).localeCompare(String(b), undefined, { numeric: true });
+                            }).forEach((v, i) => {
+                                const val = (v === null || v === undefined) ? '' : String(v);
+                                bodyText = bodyText.replace(new RegExp(`\\{\\{.*?\\}\\}`, ''), val);
+                            });
+                        }
+                    } catch (e) { }
+
+                    await insertChatLog(msg, metaId, bodyText);
+
+                    // NOTIFICAR VIA SOCKET (Real-Time Magic ✨)
+                    if (ioInstance) {
+                        const room = `tenant_${msg.tenant_id}`;
+                        ioInstance.to(room).emit('campaign_progress', {
+                            campaign_id: msg.campaign_id,
+                            status: 'sent',
+                            phone: msg.phone
                         });
                     }
-                } catch (e) { }
 
-                await insertChatLog(msg, metaId, bodyText);
+                } catch (error) {
+                    // Log detalhado do erro da Meta
+                    const errorData = error.response?.data || error.message;
+                    console.error(`❌ [WORKER T:${tenantId}] Falha msg ${msg.id}:`, JSON.stringify(errorData, null, 2));
 
-                // NOTIFICAR VIA SOCKET (Real-Time Magic ✨)
-                if (ioInstance) {
-                    const room = `tenant_${msg.tenant_id}`;
-                    ioInstance.to(room).emit('campaign_progress', {
-                        campaign_id: msg.campaign_id,
-                        status: 'sent',
-                        phone: msg.phone
-                    });
+                    const errorMsg = JSON.stringify(errorData);
+
+                    await db.query(
+                        "UPDATE campaign_recipients SET status = 'failed', error_log = $1, updated_at = NOW() WHERE id = $2",
+                        [errorMsg, msg.id]
+                    );
+
+                    // Notificar Falha
+                    if (ioInstance) {
+                        ioInstance.to(`tenant_${msg.tenant_id}`).emit('campaign_progress', {
+                            campaign_id: msg.campaign_id,
+                            status: 'failed',
+                            phone: msg.phone,
+                            error: error.message
+                        });
+                    }
                 }
 
-            } catch (error) {
-                // Log detalhado do erro da Meta
-                const errorData = error.response?.data || error.message;
-                console.error(`❌ [WORKER] Falha msg ${msg.id}:`, JSON.stringify(errorData, null, 2));
-
-                const errorMsg = JSON.stringify(errorData);
-
-                await db.query(
-                    "UPDATE campaign_recipients SET status = 'failed', error_log = $1, updated_at = NOW() WHERE id = $2",
-                    [errorMsg, msg.id]
-                );
-
-                // Notificar Falha
-                if (ioInstance) {
-                    ioInstance.to(`tenant_${msg.tenant_id}`).emit('campaign_progress', {
-                        campaign_id: msg.campaign_id,
-                        status: 'failed',
-                        phone: msg.phone,
-                        error: error.message
-                    });
-                }
+                // DELAY ANTI-BAN POR TENANT (1s)
+                await new Promise(r => setTimeout(r, 1000));
             }
-        });
-
-        await Promise.all(promises);
+        }));
         await checkCompletedCampaigns();
 
     } catch (err) {
