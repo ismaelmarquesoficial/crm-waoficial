@@ -89,7 +89,9 @@ const WhatsAppOfficialForm = ({ editId, onCancel, onSuccess }: { editId?: number
   };
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const tenantVerifyToken = user.tenantId ? `talke_tenant_${user.tenantId}` : 'talke_ia_master_secure_2024';
+  // Ajuste: tenant_id vem do banco/login como snake_case
+  const tenantId = user.tenant_id || user.tenantId;
+  const tenantVerifyToken = tenantId ? `talke_tenant_${tenantId}` : 'talke_ia_master_secure_2024';
 
   return (
     <div className="space-y-4 animate-fade-in border border-slate-200 p-6 rounded-2xl bg-white shadow-sm">
