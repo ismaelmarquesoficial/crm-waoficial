@@ -240,11 +240,13 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
   const handleSubmit = async () => {
     if (!selectedTemplate || !selectedChannel || recipientsData.length === 0) return;
     setIsSubmitting(true);
+    const finalScheduledAt = scheduledAt ? new Date(scheduledAt).toISOString() : null;
+
     try {
       const res = await fetch('http://localhost:3001/api/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ name: name || `Campanha ${new Date().toLocaleDateString()}`, channelId: selectedChannel, templateId: selectedTemplate.id, scheduledAt: scheduledAt || null, recipients: recipientsData })
+        body: JSON.stringify({ name: name || `Campanha ${new Date().toLocaleDateString()}`, channelId: selectedChannel, templateId: selectedTemplate.id, scheduledAt: finalScheduledAt, recipients: recipientsData })
       });
       if (res.ok) { const d = await res.json(); onSuccess(); onShowSuccess(`Campanha ${d.status === 'scheduled' ? 'agendada' : 'criada'}!\n${d.total_recipients} contatos.`); onClose(); }
       else { const err = await res.json(); alert(err.error); }
