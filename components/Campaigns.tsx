@@ -19,6 +19,38 @@ const sanitizePhone = (raw: string) => {
 
 // --- COMPONENTES AUXILIARES ---
 
+const CountdownDisplay = ({ targetDate }: { targetDate: string }) => {
+  const [timeLeft, setTimeLeft] = useState<string>('');
+
+  useEffect(() => {
+    const calculateTime = () => {
+      const diff = new Date(targetDate).getTime() - new Date().getTime();
+      if (diff <= 0) {
+        setTimeLeft('Iniciando...');
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setTimeLeft(`${days > 0 ? `${days}d ` : ''}${hours}h ${minutes}m ${seconds}s`);
+    };
+
+    calculateTime();
+    const timer = setInterval(calculateTime, 1000);
+    return () => clearInterval(timer);
+  }, [targetDate]);
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs font-mono font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100">
+      <Clock size={12} className="animate-pulse" />
+      {timeLeft}
+    </div>
+  );
+};
+
 const SuccessPopup = ({ message, onClose }: { message: string, onClose: () => void }) => {
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
@@ -564,8 +596,18 @@ const Campaigns: React.FC = () => {
         <button onClick={() => { setWizardInitialData(null); setShowWizard(true); }} className="bg-meta hover:bg-meta/90 text-white px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-meta/30"><Plus size={16} /> Nova Campanha</button>
       </header>
       {activeTab === 'overview' && (
-        <div className="animate-fade-in"><div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm"><table className="w-full text-left text-sm text-slate-600"><thead className="bg-slate-50 border-b border-slate-100 text-xs uppercase font-semibold text-slate-400"><tr><th className="px-6 py-4">Nome</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Progresso</th><th className="px-6 py-4">Ações</th></tr></thead>
+        <div className="animate-fade-in"><div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm"><table className="w-full text-left text-sm text-slate-600"><thead className="bg-slate-50 border-b border-slate-100 text-xs uppercase font-semibold text-slate-400"><tr><th className="px-6 py-4">Nome</th><th className="px-6 py-4">Agendamento</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Progresso</th><th className="px-6 py-4">Ações</th></tr></thead>
           <tbody className="divide-y divide-slate-100">{campaigns.map((c: any) => (<tr key={c.id} className="hover:bg-slate-50/50"><td className="px-6 py-4 font-medium text-slate-900">{c.name}</td>
+            <td className="px-6 py-4">
+              {c.status === 'scheduled' && c.scheduled_at ? (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-slate-500">{new Date(c.scheduled_at).toLocaleString()}</span>
+                  <CountdownDisplay targetDate={c.scheduled_at} />
+                </div>
+              ) : (
+                <span className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString()}</span>
+              )}
+            </td>
             <td className="px-6 py-4"><span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${c.status === 'completed' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>{c.status}</span></td>
             <td className="px-6 py-4"><div className="flex items-center gap-2"><div className="w-24 bg-slate-200 rounded-full h-1.5"><div className="bg-meta h-1.5 rounded-full" style={{ width: `${(Math.min(c.sent, c.total) / c.total) * 100}%` }}></div></div><span className="text-xs text-slate-400">{c.sent}/{c.total}</span></div></td>
             <td className="px-6 py-4 text-slate-400 flex gap-2">
