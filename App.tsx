@@ -163,6 +163,8 @@ const App: React.FC = () => {
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 setIsAuthenticated(false);
+                setUser(null);
+                // Opcional: window.location.reload() para limpar memória completamente
               }}
               className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
             >
