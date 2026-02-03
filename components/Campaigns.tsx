@@ -53,12 +53,16 @@ const CountdownDisplay = ({ targetDate }: { targetDate: string }) => {
 
 const SuccessPopup = ({ message, onClose }: { message: string, onClose: () => void }) => {
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center transform transition-all scale-100">
-        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle size={32} /></div>
-        <h3 className="text-xl font-bold text-slate-900 mb-2">Sucesso!</h3>
-        <p className="text-slate-600 mb-6 whitespace-pre-line">{message}</p>
-        <button onClick={onClose} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-semibold hover:bg-emerald-700 transition-colors">Continuar</button>
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
+      <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center transform transition-all scale-100 border border-white/20">
+        <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
+          <CheckCircle size={40} strokeWidth={1.5} />
+        </div>
+        <h3 className="text-2xl font-bold text-slate-900 mb-3 tracking-tight">Sucesso!</h3>
+        <p className="text-slate-500 mb-8 whitespace-pre-line leading-relaxed">{message}</p>
+        <button onClick={onClose} className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all">
+          Continuar
+        </button>
       </div>
     </div>
   );
@@ -68,12 +72,31 @@ const RescheduleModal = ({ onClose, onConfirm }: { onClose: () => void, onConfir
   const [date, setDate] = useState('');
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="bg-slate-50 p-6 border-b border-slate-100 flex justify-between items-center"><h3 className="text-lg font-bold text-slate-900">Reagendar Campanha</h3><button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button></div>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
+        <div className="bg-white p-6 border-b border-slate-50 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-slate-900">Reagendar Campanha</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 flex items-center justify-center transition-colors"><X size={16} /></button>
+        </div>
         <div className="p-8">
-          <div className="flex items-start gap-4 mb-6"><div className="p-3 bg-amber-100 text-amber-600 rounded-full"><AlertTriangle size={24} /></div><div><p className="text-slate-600 text-sm mb-2">Isso reprocessará mensagens falhas/pendentes.</p><p className="text-slate-500 text-xs">Mensagens já enviadas não serão duplicadas.</p></div></div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Nova Data (Opcional)</label><div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3 mb-6"><CalendarIcon className="text-slate-400" size={20} /><input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="bg-transparent border-none outline-none text-slate-700 w-full text-sm" /></div>
-          <div className="flex gap-3"><button onClick={onClose} className="flex-1 py-3 border border-slate-200 text-slate-600 rounded-xl font-medium hover:bg-slate-50 transition-colors">Cancelar</button><button onClick={() => onConfirm(date || null)} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors flex justify-center items-center gap-2">{date ? 'Agendar' : 'Enviar Agora'}{date ? <Clock size={16} /> : <Send size={16} />}</button></div>
+          <div className="flex items-start gap-4 mb-8 bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
+            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg shrink-0"><AlertTriangle size={20} /></div>
+            <div>
+              <p className="text-slate-700 text-sm font-medium mb-1">Atenção Necessária</p>
+              <p className="text-slate-500 text-xs leading-relaxed">Isso reprocessará mensagens falhas ou pendentes. Mensagens já enviadas não serão duplicadas.</p>
+            </div>
+          </div>
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1">Nova Data (Opcional)</label>
+          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-8 hover:border-blue-400 transition-colors focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400">
+            <CalendarIcon className="text-slate-400" size={20} />
+            <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} className="bg-transparent border-none outline-none text-slate-900 font-medium w-full text-sm placeholder:text-slate-400" />
+          </div>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 py-3.5 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors">Cancelar</button>
+            <button onClick={() => onConfirm(date || null)} className="flex-1 py-3.5 bg-slate-900 text-white rounded-xl font-bold shadow-lg shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center gap-2">
+              {date ? 'Confirmar Agendamento' : 'Enviar Agora'}
+              {date ? <Clock size={16} /> : <Send size={16} />}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -287,10 +310,19 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
   const availableTemplates = templates.filter(t => t.account_id?.toString() === selectedChannel);
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-          <div><h2 className="text-xl font-semibold text-slate-900">Nova Campanha</h2><p className="text-sm text-slate-400">Passo {step} de 3</p></div><button onClick={onClose}><X className="text-slate-400" size={20} /></button>
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] border border-white/20">
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white/50 backdrop-blur-md rounded-t-3xl">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Nova Campanha</h2>
+            <div className="flex items-center gap-2 mt-1">
+              <div className={`h-1.5 w-8 rounded-full ${step >= 1 ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+              <div className={`h-1.5 w-8 rounded-full ${step >= 2 ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+              <div className={`h-1.5 w-8 rounded-full ${step >= 3 ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+              <span className="text-xs text-slate-400 ml-2 font-medium">Passo {step} de 3</span>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={18} /></button>
         </div>
         <div className="p-8 flex-1 overflow-y-auto">
           {step === 1 && (<div className="space-y-6 animate-fade-in">
@@ -348,7 +380,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                         </div>
                         <button
                           onClick={() => setRecipientsData(recipientsData.filter((_, i) => i !== idx))}
-                          className="text-slate-300 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+                          className="text-slate-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
                           title="Remover Contato"
                         >
                           <Trash2 size={16} />
@@ -420,10 +452,27 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
             {/* LISTA FINAL DE REVISÃO */}
             {recipientsData.length > 0 && <div className="border rounded-lg overflow-hidden"><div className="bg-slate-50 p-2 text-xs font-bold text-slate-500 uppercase tracking-wider border-b">Amostra (Variáveis Processadas)</div>{recipientsData.slice(0, 5).map((r, i) => (<div key={i} className="p-2 border-b last:border-0 text-xs flex justify-between items-center"><span>{r.phone}</span><div className="flex gap-1">{r.variables && r.variables.length > 0 ? r.variables.map((v: string, idx: number) => <span key={idx} className="bg-slate-100 px-1 rounded border border-slate-200 font-mono text-slate-600">{v}</span>) : <span className="text-slate-300 italic">Sem vars</span>}</div></div>))}</div>}
 
-            <div className="bg-slate-50 p-4 rounded-lg flex items-center gap-3"><CalendarIcon className="text-slate-400" /><input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} className="bg-transparent w-full outline-none text-slate-700 font-medium" /></div>
+            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex items-center gap-4 hover:border-blue-300 transition-colors group/cal">
+              <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 group-hover/cal:text-blue-500 group-hover/cal:border-blue-200 transition-colors shadow-sm">
+                <CalendarIcon size={24} />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Agendar para (Opcional)</label>
+                <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} className="bg-transparent w-full outline-none text-slate-900 font-bold text-lg placeholder:text-slate-300" />
+              </div>
+            </div>
           </div>)}
         </div>
-        <div className="p-6 border-t flex justify-between">{step > 1 ? <button onClick={() => setStep(step - 1)} className="text-slate-500 font-medium hover:text-slate-800">Voltar</button> : <div />}{step < 3 ? <button onClick={() => setStep(step + 1)} disabled={step === 1 && recipientsData.length === 0} className="bg-slate-900 text-white px-6 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors">Próximo</button> : <button onClick={handleSubmit} disabled={isSubmitting} className="bg-meta text-white px-6 py-2 rounded-lg flex items-center gap-2 font-medium hover:bg-meta/90 shadow-lg shadow-meta/20">{isSubmitting ? <RefreshCw className="animate-spin" /> : <Send size={16} />} {scheduledAt ? 'Agendar Disparo' : 'Disparar Agora'}</button>}</div>
+        <div className="p-6 border-t border-slate-100 flex justify-between bg-slate-50/50 rounded-b-3xl">
+          {step > 1 ? <button onClick={() => setStep(step - 1)} className="px-6 py-2.5 text-slate-500 font-bold hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors">Voltar</button> : <div />}
+          {step < 3 ?
+            <button onClick={() => setStep(step + 1)} disabled={step === 1 && recipientsData.length === 0} className="bg-slate-900 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-slate-800 hover:scale-[1.02] shadow-lg shadow-slate-900/20 disabled:opacity-50 disabled:shadow-none transition-all">Próximo</button> :
+            <button onClick={handleSubmit} disabled={isSubmitting} className="bg-indigo-600 text-white px-8 py-2.5 rounded-xl flex items-center gap-2 font-bold hover:bg-indigo-700 hover:scale-[1.02] shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-70 disabled:grayscale">
+              {isSubmitting ? <RefreshCw className="animate-spin" /> : <Send size={18} />}
+              {scheduledAt ? 'Agendar Disparo' : 'Disparar Agora'}
+            </button>
+          }
+        </div>
       </div>
     </div>
   );
@@ -580,43 +629,94 @@ const Campaigns: React.FC = () => {
 
   return (
     <div className="p-8 h-full overflow-y-auto">
-      <header className="flex justify-between items-center mb-8">
+      <header className="flex justify-between items-end mb-10">
         <div>
-          <h1 className="text-2xl font-light tracking-tight text-slate-900 flex items-center gap-3">
+          <h1 className="text-3xl font-light tracking-tight text-slate-900 flex items-center gap-3">
             Campanhas
-            <span className={`text-[10px] px-2 py-0.5 rounded border ${socketStatus === 'connected' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-              Socket: {socketStatus} (T: {tenantIdDebug}) | Evts: {socketEventsCount}
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold tracking-wider uppercase ${socketStatus === 'connected' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+              Socket: {socketStatus}
             </span>
           </h1>
-          <div className="flex gap-4 mt-4">
-            <button onClick={() => setActiveTab('overview')} className={`pb-2 text-sm font-medium border-b-2 ${activeTab === 'overview' ? 'border-meta text-meta' : 'border-transparent text-slate-400'}`}>Visão Geral</button>
-            <button onClick={() => setActiveTab('templates')} className={`pb-2 text-sm font-medium border-b-2 ${activeTab === 'templates' ? 'border-meta text-meta' : 'border-transparent text-slate-400'}`}>Templates</button>
+          <div className="flex gap-1 mt-6 bg-slate-100/50 p-1 rounded-xl w-max border border-slate-200/50">
+            <button onClick={() => setActiveTab('overview')} className={`px-5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'overview' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-100' : 'text-slate-500 hover:text-slate-700'}`}>Visão Geral</button>
+            <button onClick={() => setActiveTab('templates')} className={`px-5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'templates' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-100' : 'text-slate-500 hover:text-slate-700'}`}>Templates</button>
           </div>
         </div>
-        <button onClick={() => { setWizardInitialData(null); setShowWizard(true); }} className="bg-meta hover:bg-meta/90 text-white px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-meta/30"><Plus size={16} /> Nova Campanha</button>
+        <button onClick={() => { setWizardInitialData(null); setShowWizard(true); }} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all group">
+          <div className="bg-white/20 p-1 rounded-lg group-hover:rotate-90 transition-transform"><Plus size={16} /></div>
+          Nova Campanha
+        </button>
       </header>
       {activeTab === 'overview' && (
-        <div className="animate-fade-in"><div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm"><table className="w-full text-left text-sm text-slate-600"><thead className="bg-slate-50 border-b border-slate-100 text-xs uppercase font-semibold text-slate-400"><tr><th className="px-6 py-4">Nome</th><th className="px-6 py-4">Agendamento</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Progresso</th><th className="px-6 py-4">Ações</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{campaigns.map((c: any) => (<tr key={c.id} className="hover:bg-slate-50/50"><td className="px-6 py-4 font-medium text-slate-900">{c.name}</td>
-            <td className="px-6 py-4">
-              {c.status === 'scheduled' && c.scheduled_at ? (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-slate-500">{new Date(c.scheduled_at).toLocaleString()}</span>
-                  <CountdownDisplay targetDate={c.scheduled_at} />
-                </div>
-              ) : (
-                <span className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString()}</span>
-              )}
-            </td>
-            <td className="px-6 py-4"><span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${c.status === 'completed' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>{c.status}</span></td>
-            <td className="px-6 py-4"><div className="flex items-center gap-2"><div className="w-24 bg-slate-200 rounded-full h-1.5"><div className="bg-meta h-1.5 rounded-full" style={{ width: `${(Math.min(c.sent, c.total) / c.total) * 100}%` }}></div></div><span className="text-xs text-slate-400">{c.sent}/{c.total}</span></div></td>
-            <td className="px-6 py-4 text-slate-400 flex gap-2">
-              <button title="Duplicar/Reutilizar Lista" onClick={() => handleDuplicate(c)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition-colors"><Copy size={16} /></button>
-              <button title="Reagendar/Repetir Falhas" onClick={() => triggerReschedule(c.id)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-meta transition-colors"><RefreshCw size={16} /></button>
-            </td></tr>))}{campaigns.length === 0 && <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400">Nenhuma campanha criada ainda.</td></tr>}</tbody></table></div></div>
+        <div className="animate-fade-in">
+          <div className="bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-soft">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-50 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400 tracking-widest">
+                <tr>
+                  <th className="px-8 py-5">Nome</th>
+                  <th className="px-8 py-5">Agendamento</th>
+                  <th className="px-8 py-5">Status</th>
+                  <th className="px-8 py-5">Progresso</th>
+                  <th className="px-8 py-5 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">{campaigns.map((c: any) => (
+                <tr key={c.id} className="hover:bg-slate-50 transition-colors group">
+                  <td className="px-8 py-5 font-bold text-slate-900">{c.name}</td>
+                  <td className="px-8 py-5">
+                    {c.status === 'scheduled' && c.scheduled_at ? (
+                      <div className="flex flex-col gap-1.5 items-start">
+                        <span className="text-xs font-semibold text-slate-500">{new Date(c.scheduled_at).toLocaleString()}</span>
+                        <CountdownDisplay targetDate={c.scheduled_at} />
+                      </div>
+                    ) : (
+                      <span className="text-xs font-medium text-slate-400">{new Date(c.created_at).toLocaleDateString()}</span>
+                    )}
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className={`px-3 py-1.5 rounded-full text-[10px] uppercase font-extrabold tracking-widest border ${c.status === 'completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : c.status === 'processing' ? 'bg-blue-50 text-blue-600 border-blue-100 animate-pulse' : c.status === 'scheduled' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
+                      {c.status}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-32 bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div className={`h-2 rounded-full transition-all duration-1000 ${c.status === 'completed' ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${(Math.min(c.sent, c.total) / c.total) * 100}%` }}></div>
+                      </div>
+                      <span className="text-xs font-bold text-slate-500">{c.sent}/{c.total}</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-5 text-right">
+                    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button title="Duplicar" onClick={() => handleDuplicate(c)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-colors"><Copy size={16} /></button>
+                      <button title="Reagendar" onClick={() => triggerReschedule(c.id)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-emerald-600 transition-colors"><RefreshCw size={16} /></button>
+                    </div>
+                  </td></tr>))}{campaigns.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-300"><Send size={24} /></div>
+                    <p>Nenhuma campanha criada ainda.</p>
+                  </td></tr>}</tbody></table></div></div>
       )}
       {activeTab === 'templates' && (
-        <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"><div className="col-span-full flex justify-end"><button onClick={handleSyncTemplates} disabled={isSyncing} className="text-meta hover:text-meta/80 text-sm font-medium flex items-center gap-2">{isSyncing ? <RefreshCw className="animate-spin" size={16} /> : <RefreshCw size={16} />} Sincronizar</button></div>{templates.map(t => (<div key={t.id} onClick={() => setPreviewTemplate(t)} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer group"><div className="flex justify-between mb-2"><LayoutTemplate className="text-slate-400" size={20} /><span className={`text-[10px] font-bold uppercase rounded px-2 py-0.5 ${t.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>{t.status}</span></div><h3 className="font-medium text-slate-900 mb-1 truncate">{t.name}</h3></div>))}</div>
+        <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="col-span-full flex justify-end">
+            <button onClick={handleSyncTemplates} disabled={isSyncing} className="text-slate-500 hover:text-slate-900 px-4 py-2 hover:bg-slate-100 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors">
+              {isSyncing ? <RefreshCw className="animate-spin" size={16} /> : <RefreshCw size={16} />} Sincronizar da Meta
+            </button>
+          </div>
+          {templates.map(t => (
+            <div key={t.id} onClick={() => setPreviewTemplate(t)} className="bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-xl hover:shadow-slate-900/5 hover:border-blue-200 transition-all cursor-pointer group relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
+                  <LayoutTemplate size={20} />
+                </div>
+                <span className={`text-[10px] font-extrabold uppercase rounded-full px-3 py-1 tracking-wider ${t.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>{t.status}</span>
+              </div>
+              <h3 className="font-bold text-slate-900 mb-1 truncate text-lg group-hover:text-blue-700 transition-colors">{t.name}</h3>
+              <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">{t.language}</p>
+            </div>
+          ))}
+        </div>
       )}
       {showWizard && <CreateCampaignWizard onClose={() => { setShowWizard(false); setWizardInitialData(null); }} channels={channels} templates={templates} onSuccess={fetchData} onShowSuccess={(msg) => { setSuccessMessage(msg); setShowSuccessPopup(true); }} initialData={wizardInitialData} />}
       {showSuccessPopup && <SuccessPopup message={successMessage} onClose={() => setShowSuccessPopup(false)} />}
