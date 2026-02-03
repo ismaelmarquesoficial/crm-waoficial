@@ -183,69 +183,58 @@ const WhatsAppOfficialForm = ({ editId, onCancel, onSuccess }: { editId?: number
 
 
 const IntegrationScreen: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'integrations' | 'team'>('integrations');
+  const [activeTab, setActiveTab] = useState<'integrations' | 'team' | 'company'>('integrations');
   const [channels, setChannels] = useState<any[]>([]);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  /* Step 2: Corrigir estado e loading */
+  const [companyData, setCompanyData] = useState<any>({});
+  const [loadingCompany, setLoadingCompany] = useState(false);
+  const [isEditingCompany, setIsEditingCompany] = useState(false);
+
   const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
   const [editId, setEditId] = useState<number | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const [testLoading, setTestLoading] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
 
+  // New User Form State
+  const [newUserOpen, setNewUserOpen] = useState(false);
+  const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'agent' });
+
   const handleTestConnection = async (id: number) => {
     setTestLoading(id);
-    setTimeLeft(30); // Inicia contagem de 30s
-
-    // Aviso ao usuário
+    setTimeLeft(30);
     alert('⏳ MODO DE TESTE ATIVADO:\n\nEnvie uma mensagem do SEU celular para o número conectado AGORA.\n\nVocê tem 30 segundos!');
   };
 
-  // Ref para acessar o estado dentro do listener do socket sem recriar o listener
   const testLoadingRef = React.useRef<number | null>(null);
   useEffect(() => { testLoadingRef.current = testLoading; }, [testLoading]);
 
-  // Efeito do Cronômetro
   useEffect(() => {
     let interval: NodeJS.Timeout;
-
     if (testLoading && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
+      interval = setInterval(() => { setTimeLeft((prev) => prev - 1); }, 1000);
     } else if (testLoading && timeLeft === 0) {
-      // TEMPO ESGOTADO = FALHA
       handleTestFailure(testLoading);
     }
-
     return () => clearInterval(interval);
   }, [testLoading, timeLeft]);
 
   const handleTestFailure = async (id: number) => {
-    // 1. Feedback Visual Imediato (Optimistic Update)
-    setChannels(prev => prev.map(ch =>
-      ch.id === id ? { ...ch, status: 'PENDING' } : ch
-    ));
+    setChannels(prev => prev.map(ch => ch.id === id ? { ...ch, status: 'PENDING' } : ch));
     setTestLoading(null);
-
-    // 2. Atualizar no Banco (Background)
     const token = localStorage.getItem('token');
     try {
       await fetch(`http://localhost:3001/api/channels/${id}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: 'PENDING' })
       });
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
 
-    // 3. Avisar o usuário (Só depois de mudar a cor visualmente)
-    // Um pequeno timeout para garantir que o React renderizou o estado 'PENDING' antes de travar no alert
     setTimeout(() => {
       alert('⚠️ FALHA: Nenhuma mensagem recebida em 30s.\n\nO status da conexão foi alterado para PENDIENTE (Amarelo). Verifique seu Webhook e tente novamente.');
-      fetchChannels(); // Garante sincronia final
+      fetchChannels();
     }, 100);
   };
 
@@ -254,35 +243,24 @@ const IntegrationScreen: React.FC = () => {
     const userString = localStorage.getItem('user');
 
     socket.on('connect', () => {
-      console.log('🟢 Socket Conectado!', socket.id);
       setSocketConnected(true);
       if (userString) {
         try {
           const user = JSON.parse(userString);
-          if (user.tenantId) {
-            socket.emit('join_tenant', user.tenantId);
-            console.log('🗣️ Entrando na sala: tenant_' + user.tenantId);
+          if (user.tenantId || user.tenant_id) {
+            const tId = user.tenantId || user.tenant_id;
+            socket.emit('join_tenant', tId);
           }
         } catch (e) { console.error(e); }
       }
     });
 
-    socket.on('disconnect', () => {
-      console.log('🔴 Socket Desconectado');
-      setSocketConnected(false);
-    });
-
+    socket.on('disconnect', () => setSocketConnected(false));
     socket.on('channel_status_update', (data: { id: number, status: string }) => {
-      console.log('⚡ ATUALIZAÇÃO RECEBIDA:', data);
-      setChannels(prev => prev.map(ch =>
-        ch.id === data.id ? { ...ch, status: data.status } : ch
-      ));
+      setChannels(prev => prev.map(ch => ch.id === data.id ? { ...ch, status: data.status } : ch));
       fetchChannels();
     });
-
-    // SUCESSO DO TESTE (Passivo)
     socket.on('new_message', (data) => {
-      // Se estamos em modo de teste, qualquer mensagem nova conta como sucesso
       if (testLoadingRef.current) {
         alert('✅ SUCESSO! Mensagem recebida.\n\nA conexão foi confirmada e o status atualizado para CONECTADO (Verde).');
         setTestLoading(null);
@@ -291,33 +269,52 @@ const IntegrationScreen: React.FC = () => {
       }
     });
 
-    // Listener legado (caso o backend envie)
-    socket.on('connection_test_success', (data: { channelId: number }) => {
-      if (testLoadingRef.current) {
-        setTestLoading(null); // Só para garantir, mas o new_message deve pegar
-        setTimeLeft(0);
-      }
-    });
+    return () => { socket.disconnect(); };
+  }, [activeTab, viewMode]);
 
-    if (activeTab === 'integrations' && viewMode === 'list') {
-      fetchChannels();
-    }
-
-    return () => {
-      socket.disconnect();
-    };
+  useEffect(() => {
+    if (activeTab === 'integrations' && viewMode === 'list') fetchChannels();
+    if (activeTab === 'team') fetchTeam();
+    if (activeTab === 'company') fetchCompany();
   }, [activeTab, viewMode]);
 
   const fetchChannels = async () => {
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch('http://localhost:3001/api/channels', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await fetch('http://localhost:3001/api/channels', { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       setChannels(data);
+    } catch (error) { console.error(error); }
+  };
+
+  const fetchTeam = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('http://localhost:3001/api/settings/team', { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      setTeamMembers(data);
+    } catch (error) { console.error(error); }
+  };
+
+
+
+  /* Step 3: Reimplementar fetchCompany com robustez */
+  const fetchCompany = async () => {
+    setLoadingCompany(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('http://localhost:3001/api/settings/company', { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setCompanyData(data || {});
+      } else {
+        setCompanyData({}); // Fallback se 404
+      }
     } catch (error) {
       console.error(error);
+      setCompanyData({});
+    } finally {
+      setLoadingCompany(false);
     }
   };
 
@@ -331,6 +328,61 @@ const IntegrationScreen: React.FC = () => {
     fetchChannels();
   };
 
+  const handleAddUser = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('http://localhost:3001/api/settings/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(newUser)
+      });
+      if (res.ok) {
+        setNewUserOpen(false);
+        setNewUser({ name: '', email: '', password: '', role: 'agent' });
+        fetchTeam();
+        alert('Membro adicionado!');
+      } else {
+        const err = await res.json();
+        alert('Erro: ' + err.error);
+      }
+    } catch (e) { alert('Erro de conexão'); }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm('Remover membro da equipe?')) return;
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`http://localhost:3001/api/settings/team/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) fetchTeam();
+      else alert('Erro ao remover membro');
+    } catch (e) { alert('Erro de conexão'); }
+  };
+
+  const handleSaveCompany = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('http://localhost:3001/api/settings/company', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(companyData)
+      });
+      if (res.ok) {
+        alert('Dados da empresa atualizados!');
+        fetchCompany();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(`Erro ao salvar dados: ${errData.error || res.statusText}`);
+        console.error('Erro detalhado:', errData);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Erro de conexão ao salvar empresa.');
+    }
+  };
+
   return (
     <div className="p-8 bg-white h-full overflow-y-auto animate-fade-in">
       <header className="mb-8 border-b border-slate-100 pb-2">
@@ -339,18 +391,9 @@ const IntegrationScreen: React.FC = () => {
           <div title={socketConnected ? "Tempo Real Ativo" : "Desconectado do Servidor"} className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-400'}`}></div>
         </div>
         <div className="flex gap-6 mt-6">
-          <button
-            onClick={() => setActiveTab('integrations')}
-            className={`pb-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'integrations' ? 'border-meta text-meta' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-          >
-            Integrações
-          </button>
-          <button
-            onClick={() => setActiveTab('team')}
-            className={`pb-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'team' ? 'border-meta text-meta' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-          >
-            Gestão de Equipe
-          </button>
+          <button onClick={() => setActiveTab('integrations')} className={`pb-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'integrations' ? 'border-meta text-meta' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Integrações</button>
+          <button onClick={() => setActiveTab('team')} className={`pb-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'team' ? 'border-meta text-meta' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Equipe</button>
+          <button onClick={() => setActiveTab('company')} className={`pb-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'company' ? 'border-meta text-meta' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Empresa</button>
         </div>
       </header>
 
@@ -363,10 +406,7 @@ const IntegrationScreen: React.FC = () => {
                   <h2 className="font-bold text-slate-800">Canais Conectados</h2>
                   <p className="text-sm text-slate-500">Gerencie suas conexões de WhatsApp.</p>
                 </div>
-                <button
-                  onClick={() => { setEditId(null); setViewMode('form'); }}
-                  className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
-                >
+                <button onClick={() => { setEditId(null); setViewMode('form'); }} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2">
                   + Nova Conexão
                 </button>
               </div>
@@ -377,9 +417,7 @@ const IntegrationScreen: React.FC = () => {
                 {channels.map(channel => (
                   <div key={channel.id} className="p-4 border border-slate-200 rounded-xl flex items-center justify-between bg-white shadow-sm hover:border-meta/30 transition-colors">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-meta/10 rounded-full flex items-center justify-center text-meta">
-                        <ShieldCheck size={24} />
-                      </div>
+                      <div className="w-12 h-12 bg-meta/10 rounded-full flex items-center justify-center text-meta"><ShieldCheck size={24} /></div>
                       <div>
                         <h3 className="font-bold text-slate-900">{channel.verified_name || channel.instance_name}</h3>
                         <p className="text-xs text-slate-500 font-mono tracking-wide">{channel.display_phone_number || `ID: ${channel.phone_number_id}`}</p>
@@ -392,27 +430,15 @@ const IntegrationScreen: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {channel.status === 'CONNECTED' || channel.status === 'connected' ? (
-                        <span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-full uppercase">Conectado</span>
-                      ) : (channel.status === 'VERIFIED') ? (
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span> Assinado
-                        </span>
-                      ) : (channel.status === 'PENDING' || channel.status === 'validating') ? (
-                        <span className="px-2 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full uppercase flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span> Aguardando
-                        </span>
-                      ) : (
-                        <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[10px] font-bold rounded-full uppercase">{channel.status || 'Desconectado'}</span>
-                      )}
-                      <button
-                        onClick={() => handleTestConnection(channel.id)}
-                        disabled={testLoading === channel.id}
-                        className={`p-2 rounded-lg transition-colors border text-[10px] font-bold uppercase tracking-wider ${testLoading === channel.id ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'}`}
-                      >
-                        {testLoading === channel.id ? `Aguardando (${timeLeft}s)...` : 'Testar'}
-                      </button>
+                      {/* Badge Status Lógica aqui (igual anterior) */}
+                      <span className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase ${(channel.status === 'CONNECTED' || channel.status === 'connected') ? 'bg-green-100 text-green-700' :
+                        (channel.status === 'VERIFIED') ? 'bg-blue-100 text-blue-700' :
+                          (channel.status === 'PENDING') ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'
+                        }`}>{channel.status}</span>
 
+                      <button onClick={() => handleTestConnection(channel.id)} disabled={testLoading === channel.id} className={`p-2 rounded-lg transition-colors border text-[10px] font-bold uppercase tracking-wider ${testLoading === channel.id ? 'bg-slate-100 text-slate-400' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                        {testLoading === channel.id ? `${timeLeft}s` : 'Testar'}
+                      </button>
                       <button onClick={() => { setEditId(channel.id); setViewMode('form'); }} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">Editar</button>
                       <button onClick={() => handleDelete(channel.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">Excluir</button>
                     </div>
@@ -423,54 +449,121 @@ const IntegrationScreen: React.FC = () => {
           )}
 
           {viewMode === 'form' && (
-            <WhatsAppOfficialForm
-              editId={editId}
-              onCancel={() => setViewMode('list')}
-              onSuccess={() => {
-                setViewMode('list');
-                fetchChannels();
-              }}
-            />
+            <WhatsAppOfficialForm editId={editId} onCancel={() => setViewMode('list')} onSuccess={() => { setViewMode('list'); fetchChannels(); }} />
           )}
         </div>
       )}
 
       {activeTab === 'team' && (
         <div className="max-w-4xl animate-fade-in">
-          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <div>
-                <h2 className="font-medium text-slate-900">Membros da Equipe</h2>
-                <p className="text-sm text-slate-400">Gerencie o acesso ao seu tenant.</p>
-              </div>
-              <button className="bg-white border border-slate-200 text-slate-700 hover:border-meta/30 hover:text-meta px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm">
-                Convidar Membro
-              </button>
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="font-bold text-slate-900">Membros da Equipe</h2>
+              <p className="text-sm text-slate-500">Gerencie quem tem acesso ao painel deste Tenant.</p>
             </div>
+            <button onClick={() => setNewUserOpen(true)} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">
+              + Adicionar Membro
+            </button>
+          </div>
+
+          {newUserOpen && (
+            <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4 animate-fade-in-down">
+              <div className="grid grid-cols-2 gap-4">
+                <input type="text" placeholder="Nome" className="p-2 rounded border" value={newUser.name} onChange={e => setNewUser({ ...newUser, name: e.target.value })} />
+                <input type="email" placeholder="Email" className="p-2 rounded border" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} />
+                <input type="password" placeholder="Senha" className="p-2 rounded border" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} />
+                <select className="p-2 rounded border" value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value })}>
+                  <option value="agent">Agente</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setNewUserOpen(false)} className="text-slate-500 text-sm">Cancelar</button>
+                <button onClick={handleAddUser} className="bg-meta text-white px-4 py-1.5 rounded text-sm font-bold">Salvar</button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
             <div className="divide-y divide-slate-100">
-              {MOCK_USERS.map(user => (
-                <div key={user.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+              {teamMembers.map(member => (
+                <div key={member.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-4">
-                    <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full" />
+                    <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 font-bold">{member.name.charAt(0)}</div>
                     <div>
-                      <h3 className="text-sm font-medium text-slate-900">{user.name}</h3>
+                      <h3 className="text-sm font-medium text-slate-900">{member.name}</h3>
                       <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <Mail size={12} /> {user.email}
+                        <Mail size={12} /> {member.email}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className={`px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider flex items-center gap-1 ${user.role === 'admin' ? 'bg-meta/10 text-meta' : 'bg-slate-100 text-slate-600'
-                      }`}>
-                      <Shield size={12} />
-                      {user.role}
+                    <span className={`px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider flex items-center gap-1 ${member.role === 'admin' ? 'bg-meta/10 text-meta' : 'bg-slate-100 text-slate-600'}`}>
+                      <Shield size={12} /> {member.role}
                     </span>
-                    <button className="text-slate-400 hover:text-slate-600 text-sm font-medium">Editar</button>
+                    <button onClick={() => handleDeleteUser(member.id)} className="text-slate-400 hover:text-red-600 text-sm font-medium">Remover</button>
                   </div>
                 </div>
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'company' && (
+        <div className="max-w-2xl animate-fade-in">
+          {!companyData ? (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-400 mb-4"></div>
+              <p>Carregando dados da empresa...</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <h2 className="font-bold text-slate-900 mb-6">Dados da Empresa (Tenant)</h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome da Empresa</label>
+                  <input disabled={!isEditingCompany} type="text" className={`w-full p-2 border rounded-lg transition-colors ${isEditingCompany ? 'bg-white border-blue-300' : 'bg-slate-50 border-transparent'}`} value={companyData.company_name || ''} onChange={e => setCompanyData({ ...companyData, company_name: e.target.value })} placeholder="Ex: Minha Empresa Ltda" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">CNPJ</label>
+                    <input disabled={!isEditingCompany} type="text" className={`w-full p-2 border rounded-lg transition-colors ${isEditingCompany ? 'bg-white border-blue-300' : 'bg-slate-50 border-transparent'}`} value={companyData.cnpj || ''} onChange={e => setCompanyData({ ...companyData, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefone Contato</label>
+                    <input disabled={!isEditingCompany} type="text" className={`w-full p-2 border rounded-lg transition-colors ${isEditingCompany ? 'bg-white border-blue-300' : 'bg-slate-50 border-transparent'}`} value={companyData.contact_phone || ''} onChange={e => setCompanyData({ ...companyData, contact_phone: e.target.value })} placeholder="(00) 00000-0000" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email Contato</label>
+                  <input disabled={!isEditingCompany} type="text" className={`w-full p-2 border rounded-lg transition-colors ${isEditingCompany ? 'bg-white border-blue-300' : 'bg-slate-50 border-transparent'}`} value={companyData.contact_email || ''} onChange={e => setCompanyData({ ...companyData, contact_email: e.target.value })} placeholder="contato@empresa.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Website</label>
+                  <input disabled={!isEditingCompany} type="text" className={`w-full p-2 border rounded-lg transition-colors ${isEditingCompany ? 'bg-white border-blue-300' : 'bg-slate-50 border-transparent'}`} value={companyData.website || ''} onChange={e => setCompanyData({ ...companyData, website: e.target.value })} placeholder="https://..." />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Endereço</label>
+                  <textarea disabled={!isEditingCompany} className={`w-full p-2 border rounded-lg transition-colors ${isEditingCompany ? 'bg-white border-blue-300' : 'bg-slate-50 border-transparent'}`} rows={3} value={companyData.address || ''} onChange={e => setCompanyData({ ...companyData, address: e.target.value })} placeholder="Rua..." />
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+                  {!isEditingCompany ? (
+                    <button onClick={() => setIsEditingCompany(true)} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition shadow-sm flex items-center gap-2">
+                      <span className="text-lg">✎</span> Editar Dados
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={() => { setIsEditingCompany(false); fetchCompany(); }} className="text-slate-500 px-4 py-2 rounded-lg font-medium hover:bg-slate-100 transition">Cancelar</button>
+                      <button onClick={async () => { await handleSaveCompany(); setIsEditingCompany(false); }} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 transition shadow-sm">Salvar Alterações</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

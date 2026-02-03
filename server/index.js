@@ -42,6 +42,9 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/campaigns', campaignRoutes); // Registrada
 
+const settingsRoutes = require('./routes/settings');
+app.use('/api/settings', settingsRoutes);
+
 // Webhooks
 const whatsappWebhookRoutes = require('./webhooks/whatsapp/routes');
 app.use('/api/webhooks/whatsapp', whatsappWebhookRoutes);
