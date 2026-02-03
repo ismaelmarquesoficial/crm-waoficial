@@ -212,6 +212,8 @@ const IntegrationScreen: React.FC = () => {
   const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'agent' });
   const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [showTestModal, setShowTestModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteChannelId, setDeleteChannelId] = useState<number | null>(null);
 
   const showNotification = (message: string, type: 'success' | 'error') => {
     setNotification({ message, type });
@@ -310,9 +312,15 @@ const IntegrationScreen: React.FC = () => {
     const token = localStorage.getItem('token');
     try {
       const res = await fetch('http://localhost:3001/api/settings/team', { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      setTeamMembers(data);
-    } catch (error) { console.error(error); }
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setTeamMembers(data);
+        else setTeamMembers([]);
+      } else {
+        console.warn('/settings/team error', res.status);
+        setTeamMembers([]);
+      }
+    } catch (error) { console.error(error); setTeamMembers([]); }
   };
 
 
@@ -337,14 +345,26 @@ const IntegrationScreen: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Tem certeza? Isso removerá a integração.')) return;
+  const handleDelete = (id: number) => {
+    setDeleteChannelId(id);
+  };
+
+  const executeDeleteChannel = async () => {
+    if (!deleteChannelId) return;
     const token = localStorage.getItem('token');
-    await fetch(`http://localhost:3001/api/channels/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    fetchChannels();
+    try {
+      const res = await fetch(`http://localhost:3001/api/channels/${deleteChannelId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchChannels();
+        showNotification('Conexão removida com sucesso!', 'success');
+      } else {
+        showNotification('Erro ao remover conexão.', 'error');
+      }
+    } catch (e) { showNotification('Erro de conexão.', 'error'); }
+    setDeleteChannelId(null);
   };
 
   const handleAddUser = async () => {
@@ -359,25 +379,34 @@ const IntegrationScreen: React.FC = () => {
         setNewUserOpen(false);
         setNewUser({ name: '', email: '', password: '', role: 'agent' });
         fetchTeam();
-        alert('Membro adicionado!');
+        showNotification('Membro adicionado com sucesso!', 'success');
       } else {
         const err = await res.json();
-        alert('Erro: ' + err.error);
+        showNotification(`Erro: ${err.error}`, 'error');
       }
-    } catch (e) { alert('Erro de conexão'); }
+    } catch (e) { showNotification('Erro de conexão ao adicionar membro.', 'error'); }
   };
 
-  const handleDeleteUser = async (id: string) => {
-    if (!confirm('Remover membro da equipe?')) return;
+  const handleDeleteUser = (id: string) => {
+    setDeleteTarget(id);
+  };
+
+  const executeDeleteUser = async () => {
+    if (!deleteTarget) return;
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`http://localhost:3001/api/settings/team/${id}`, {
+      const res = await fetch(`http://localhost:3001/api/settings/team/${deleteTarget}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.ok) fetchTeam();
-      else alert('Erro ao remover membro');
-    } catch (e) { alert('Erro de conexão'); }
+      if (res.ok) {
+        fetchTeam();
+        showNotification('Membro removido com sucesso!', 'success');
+      } else {
+        showNotification('Erro ao remover membro.', 'error');
+      }
+    } catch (e) { showNotification('Erro de conexão.', 'error'); }
+    setDeleteTarget(null);
   };
 
   const handleSaveCompany = async () => {
@@ -663,6 +692,75 @@ const IntegrationScreen: React.FC = () => {
           }`}>
           {notification.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
           <span className="font-bold text-sm">{notification.message}</span>
+        </div>
+      )}
+
+      {/* Test Modal (Added) */}
+      {showTestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md relative animate-slide-up overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-meta to-wa"></div>
+
+            <div className="text-center mb-8 pt-4">
+              <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 relative">
+                <Smartphone size={40} className="text-meta" />
+                <div className="absolute -right-1 -bottom-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm">
+                  <Wifi size={16} className="text-green-500 animate-pulse" />
+                </div>
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Teste de Conexão</h3>
+              <p className="text-slate-500 text-sm px-4 leading-relaxed">Envie uma mensagem do <b>SEU celular</b> para o número conectado <b>AGORA</b>.</p>
+            </div>
+
+            <div className="flex flex-col items-center justify-center mb-8">
+              <div className="text-4xl font-black text-slate-900 font-mono tracking-tight mb-1">
+                00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+              </div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Segundos Restantes</p>
+            </div>
+
+            <button onClick={() => { setShowTestModal(false); setTestLoading(null); }} className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-colors">
+              Cancelar Teste
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm relative animate-slide-up overflow-hidden">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+                <AlertCircle size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Remover Membro?</h3>
+              <p className="text-slate-500 text-sm">Tem certeza que deseja remover este membro da equipe?</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-colors">Cancelar</button>
+              <button onClick={executeDeleteUser} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors shadow-lg shadow-red-500/20">Remover</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Channel Delete Confirmation Modal */}
+      {deleteChannelId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm relative animate-slide-up overflow-hidden">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+                <AlertCircle size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Remover Conexão?</h3>
+              <p className="text-slate-500 text-sm">Isso desconectará o número. Tem certeza?</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteChannelId(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-colors">Cancelar</button>
+              <button onClick={executeDeleteChannel} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors shadow-lg shadow-red-500/20">Desconectar</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

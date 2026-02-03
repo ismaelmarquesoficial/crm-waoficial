@@ -53,7 +53,7 @@ router.put('/company', async (req, res) => {
 router.get('/team', async (req, res) => {
     try {
         const result = await db.query(
-            'SELECT id, name, email, role, avatar, created_at FROM users WHERE tenant_id = $1 ORDER BY created_at DESC',
+            'SELECT id, name, email, role, created_at FROM users WHERE tenant_id = $1 ORDER BY created_at DESC',
             [req.tenantId]
         );
         res.json(result.rows);
