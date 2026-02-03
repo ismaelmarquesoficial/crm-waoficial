@@ -27,6 +27,9 @@ const io = new Server(server, {
     }
 });
 
+// Disponibilizar io globalmente via req.app.get('io')
+app.set('io', io);
+
 app.use(cors());
 app.use(express.json());
 

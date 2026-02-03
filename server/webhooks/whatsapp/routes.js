@@ -14,6 +14,13 @@ router.route('/') // O prefixo /api/webhooks/whatsapp já está no index.js
         const mode = req.query['hub.mode'];
         const token = req.query['hub.verify_token'];
         const challenge = req.query['hub.challenge'];
+        const io = req.app.get('io'); // Get IO instance
+
+        // Tenta notificar início
+        const initialMatch = token ? token.match(/^talke_tenant_(\d+)$/) : null;
+        if (initialMatch && io) {
+            io.to(`tenant_${initialMatch[1]}`).emit('webhook_log', { message: '🔔 Webhook VERIFY (GET) recebido!' });
+        }
 
         console.log('👉 Dados recebidos:', { mode, token, challenge });
 
@@ -28,6 +35,7 @@ router.route('/') // O prefixo /api/webhooks/whatsapp já está no index.js
                 isValid = true;
                 targetTenantId = tenantMatch[1];
                 console.log(`🔍 Token Válido para Tenant ID: ${targetTenantId}`);
+                if (io) io.to(`tenant_${targetTenantId}`).emit('webhook_log', { message: `🔍 Token Válido para Tenant ID: ${targetTenantId}` });
             }
             // 2. Validação de Token Global (Legado/Admin)
             else if (token === VERIFY_TOKEN) {
@@ -37,6 +45,7 @@ router.route('/') // O prefixo /api/webhooks/whatsapp já está no index.js
 
             if (isValid) {
                 console.log('✅ WEBHOOK_VALIDADO.');
+                if (io && targetTenantId) io.to(`tenant_${targetTenantId}`).emit('webhook_log', { message: '✅ WEBHOOK VALIDADO COM SUCESSO! Conexão Confirmada.' });
 
                 // ATUALIZAÇÃO INTELIGENTE DE STATUS
                 try {

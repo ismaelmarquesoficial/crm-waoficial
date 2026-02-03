@@ -83,9 +83,8 @@ router.post('/whatsapp-official', async (req, res) => {
         const metaData = metaResponse.data;
         console.log('✅ Resposta da Meta:', metaData);
 
-        // O status "real" da Meta diz respeito à linha telefônica, mas não à nossa integração (Webhook).
-        // Por isso, vamos iniciar como 'PENDING' e esperar o primeiro webhook confirmar a conexão.
-        finalStatus = 'PENDING';
+        // Respeitar o status real retornado pela Meta
+        finalStatus = metaData.status || 'PENDING';
         qualityRating = metaData.quality_rating;
         displayPhone = metaData.display_phone_number;
         verifiedName = metaData.verified_name;

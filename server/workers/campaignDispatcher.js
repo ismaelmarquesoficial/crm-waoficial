@@ -13,17 +13,21 @@ let ioInstance = null; // Para armazenar o socket.io
  * Lógica: Fair Share (Divisão Justa) entre Tenants
  */
 const startWorker = (io) => {
-    ioInstance = io; // Guardar instância para uso nos disparos
-    console.log('🚀 Worker de Disparo de Campanhas INICIADO.');
+    ioInstance = io;
+    console.log('🚀 Worker de Disparo de Campanhas INICIADO (Modo Robusto).');
 
-    setInterval(async () => {
+    const runCycle = async () => {
         try {
-            await checkScheduledCampaigns(); // Acorda campanhas agendadas
+            await checkScheduledCampaigns();
             await processBatch();
         } catch (err) {
-            console.error('🔥 Erro Crítico no Worker:', err);
+            console.error('🔥 Erro Crítico no Worker:', err.message);
+        } finally {
+            setTimeout(runCycle, CYCLE_INTERVAL_MS);
         }
-    }, CYCLE_INTERVAL_MS);
+    };
+
+    runCycle();
 };
 
 // Verificar e Ativar Campanhas Agendadas

@@ -276,6 +276,12 @@ const IntegrationScreen: React.FC = () => {
     });
 
     socket.on('disconnect', () => setSocketConnected(false));
+
+    // Listen for Webhook progress logs
+    socket.on('webhook_log', (data: { message: string }) => {
+      showNotification(data.message, 'success');
+    });
+
     socket.on('channel_status_update', (data: { id: number, status: string }) => {
       setChannels(prev => prev.map(ch => ch.id === data.id ? { ...ch, status: data.status } : ch));
       fetchChannels();
