@@ -12,13 +12,28 @@
             colors: {
               meta: '#0668E1',
               wa: '#25D366',
+              ice: '#F8FAFC',
               slate: {
-                50: '#F8FAFC',
-                900: '#0F172A',
+                50: '#F8FAFC',    // Ice background
+                100: '#F1F5F9',   // Softer backgrounds
+                200: '#E2E8F0',   // Subtle borders
+                300: '#CBD5E1',
+                400: '#94A3B8',   // Muted text
+                500: '#64748B',
+                600: '#475569',
+                700: '#334155',
+                800: '#1E293B',   // Dark text
+                900: '#0F172A',   // Almost black
               }
+            },
+            boxShadow: {
+              'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)', // Extremely soft shadow
+              'floating': '0 10px 30px -5px rgba(0, 0, 0, 0.08)', // For hover states
+              'glow': '0 0 15px rgba(6, 104, 225, 0.15)', // Subtle brand glow
             },
             backgroundImage: {
               'brand-gradient': 'linear-gradient(135deg, #0668E1 0%, #25D366 100%)',
+              'glass': 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
             },
             fontFamily: {
               sans: ['"Plus Jakarta Sans"', 'sans-serif'],
