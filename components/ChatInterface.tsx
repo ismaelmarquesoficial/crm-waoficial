@@ -18,25 +18,47 @@ import {
   ChevronDown,
   Layers,
   Wifi,
-  WifiOff
+  WifiOff,
+  Smile
 } from 'lucide-react';
 import { Contact, Message, MessageType } from '../types';
+
+// Inject custom animations
+const style = document.createElement('style');
+style.innerHTML = `
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .animate-message {
+    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+  }
+  .glass-header {
+      background: rgba(255, 255, 255, 0.90);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+  }
+`;
+document.head.appendChild(style);
 
 const AudioPlayer = ({ isUser }: { isUser: boolean }) => {
   const [playing, setPlaying] = useState(false);
   return (
-    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg w-64 backdrop-blur-sm ${isUser ? 'bg-white/20' : 'bg-slate-100/80'}`}>
+    <div className={`flex items-center gap-3 px-3 py-2 rounded-2xl w-64 backdrop-blur-sm transition-all duration-300 ${isUser ? 'bg-white/20 hover:bg-white/30' : 'bg-slate-100/80 hover:bg-slate-200/80'}`}>
       <button
         onClick={() => setPlaying(!playing)}
-        className={`w-8 h-8 flex items-center justify-center rounded-full shadow-sm transition ${isUser ? 'bg-white text-meta' : 'bg-white text-slate-600'}`}
+        className={`w-9 h-9 flex items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95 ${isUser ? 'bg-white text-blue-600' : 'bg-white text-slate-600'}`}
       >
-        {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+        {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
       </button>
-      <div className="flex-1 space-y-1">
-        <div className={`h-1 rounded-full w-full relative overflow-hidden ${isUser ? 'bg-white/40' : 'bg-slate-300'}`}>
-          <div className={`absolute left-0 top-0 bottom-0 w-1/3 ${isUser ? 'bg-white' : 'bg-slate-500'} ${playing ? 'animate-pulse' : ''}`}></div>
+      <div className="flex-1 space-y-1.5">
+        <div className={`h-1.5 rounded-full w-full relative overflow-hidden ${isUser ? 'bg-white/30' : 'bg-slate-300'}`}>
+          <div className={`absolute left-0 top-0 bottom-0 w-1/3 rounded-full ${isUser ? 'bg-white' : 'bg-slate-500'} ${playing ? 'animate-progress-indeterminate' : ''}`}></div>
         </div>
-        <div className={`flex justify-between text-[10px] font-mono ${isUser ? 'text-white/80' : 'text-slate-500'}`}>
+        <div className={`flex justify-between text-[10px] font-medium ${isUser ? 'text-white/90' : 'text-slate-500'}`}>
           <span>0:12</span>
           <span>1:04</span>
         </div>
@@ -231,51 +253,50 @@ const ChatInterface: React.FC = () => {
 
   // 5. Render
   return (
-    <div className="flex h-full bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
-      {/* Sidebar List */}
-      <div className="w-full md:w-80 border-r border-slate-100 flex flex-col bg-white">
+    <div className="flex h-full bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-2xl ring-1 ring-slate-900/5">
+      {/* Sidebar List - Subtle Gradient on Background */}
+      <div className="w-full md:w-80 border-r border-slate-100 flex flex-col bg-gradient-to-br from-white to-slate-50">
 
-        {/* Custom Channel Selector - Premium Look */}
-        <div className="px-4 pt-4 pb-2 border-b border-slate-50 bg-slate-50/50 z-20">
-          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5 ml-0.5">Canal de Atendimento</label>
+        {/* Custom Channel Selector */}
+        <div className="px-5 pt-5 pb-3 bg-transparent z-20">
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setIsChannelDropdownOpen(!isChannelDropdownOpen)}
-              className="w-full bg-white border border-slate-200 hover:border-meta/50 transition-colors text-slate-700 text-sm rounded-xl px-3 py-2.5 flex items-center justify-between group shadow-sm"
+              className="w-full bg-white text-left border border-slate-200 hover:border-blue-400 transition-all duration-300 transform hover:-translate-y-0.5 text-slate-700 text-sm rounded-2xl px-3 py-3 flex items-center justify-between group shadow-sm hover:shadow-md"
             >
-              <div className="flex items-center gap-2.5 overflow-hidden">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${selectedChannel === 'all' ? 'bg-meta/10 text-meta' : 'bg-green-100 text-green-600'}`}>
-                  {selectedChannel === 'all' ? <Layers size={16} /> : <Smartphone size={16} />}
+              <div className="flex items-center gap-3 overflow-hidden">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${selectedChannel === 'all' ? 'bg-gradient-to-br from-blue-500 to-teal-400 text-white' : 'bg-green-50 text-green-600'}`}>
+                  {selectedChannel === 'all' ? <Layers size={18} /> : <Smartphone size={18} />}
                 </div>
-                <div className="flex flex-col items-start truncate">
-                  <span className="font-semibold text-xs text-slate-800 truncate block w-full text-left">{getSelectedChannelLabel()}</span>
-                  <span className="text-[10px] text-slate-400">
-                    {selectedChannel === 'all' ? 'Visualizar tudo' : 'Filtrado'}
-                  </span>
+                <div className="flex flex-col items-start truncate min-w-0">
+                  <span className="font-bold text-[10px] text-slate-400 uppercase tracking-widest mb-0.5">Canal Ativo</span>
+                  <span className="font-semibold text-xs text-slate-800 truncate block w-full">{getSelectedChannelLabel()}</span>
                 </div>
               </div>
-              <ChevronDown size={14} className={`text-slate-400 group-hover:text-meta transition-transform duration-200 ${isChannelDropdownOpen ? 'rotate-180' : ''}`} />
+              <div className="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
+                <ChevronDown size={14} className={`text-slate-400 group-hover:text-blue-500 transition-transform duration-300 ${isChannelDropdownOpen ? 'rotate-180' : ''}`} />
+              </div>
             </button>
 
             {/* Dropdown Menu */}
             {isChannelDropdownOpen && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden animate-fade-in-down origin-top">
-                <div className="max-h-60 overflow-y-auto py-1">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-fade-in-down origin-top z-50">
+                <div className="max-h-72 overflow-y-auto py-2 px-2 scrollbar-hide">
                   <button
                     onClick={() => { setSelectedChannel('all'); setIsChannelDropdownOpen(false); }}
-                    className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors ${selectedChannel === 'all' ? 'bg-meta/5' : ''}`}
+                    className={`w-full text-left px-3 py-3 rounded-xl flex items-center gap-3 transition-all duration-200 ${selectedChannel === 'all' ? 'bg-blue-50 shadow-sm ring-1 ring-blue-100' : 'hover:bg-slate-50'}`}
                   >
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${selectedChannel === 'all' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
                       <Layers size={16} />
                     </div>
                     <div>
-                      <p className={`text-xs font-semibold ${selectedChannel === 'all' ? 'text-meta' : 'text-slate-700'}`}>Todas as Contas</p>
-                      <p className="text-[10px] text-slate-400">Ver mensagens de todos</p>
+                      <p className={`text-xs font-bold ${selectedChannel === 'all' ? 'text-blue-700' : 'text-slate-700'}`}>Todas as Contas</p>
+                      <p className="text-[10px] text-slate-400 font-medium">Visão unificada</p>
                     </div>
-                    {selectedChannel === 'all' && <Check size={14} className="ml-auto text-meta" />}
+                    {selectedChannel === 'all' && <Check size={16} className="ml-auto text-blue-600" />}
                   </button>
 
-                  <div className="h-px bg-slate-100 my-1 mx-3"></div>
+                  <div className="h-px bg-slate-100 my-2 mx-2"></div>
 
                   {channels.map((ch: any) => {
                     const isConnected = ch.status === 'CONNECTED';
@@ -284,21 +305,24 @@ const ChatInterface: React.FC = () => {
                       <button
                         key={ch.id}
                         onClick={() => { setSelectedChannel(String(ch.id)); setIsChannelDropdownOpen(false); }}
-                        className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-green-50/50' : ''}`}
+                        className={`w-full text-left px-3 py-3 rounded-xl flex items-center gap-3 transition-all duration-200 mb-1 ${isSelected ? 'bg-green-50/80 shadow-sm ring-1 ring-green-100' : 'hover:bg-slate-50'}`}
                       >
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isConnected ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                           {isConnected ? <Wifi size={16} /> : <WifiOff size={16} />}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex justify-between items-center">
-                            <p className={`text-xs font-semibold truncate ${isSelected ? 'text-green-700' : 'text-slate-700'}`}>
-                              {ch.instance_name || ch.verified_name || 'Conta WhatsApp'}
+                            <p className={`text-xs font-bold truncate ${isSelected ? 'text-green-700' : 'text-slate-700'}`}>
+                              {ch.instance_name || ch.verified_name || 'Nova Conexão'}
                             </p>
-                            {isConnected && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>}
+                            {isConnected && <span className="flex h-2 w-2 relative">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                            </span>}
                           </div>
-                          <p className="text-[10px] text-slate-400 truncate">{ch.display_phone_number || ch.phone_number_id}</p>
+                          <p className="text-[10px] text-slate-400 truncate font-mono mt-0.5">{ch.display_phone_number || ch.phone_number_id}</p>
                         </div>
-                        {isSelected && <Check size={14} className="ml-auto text-green-600" />}
+                        {isSelected && <Check size={16} className="ml-auto text-green-600" />}
                       </button>
                     )
                   })}
@@ -308,66 +332,67 @@ const ChatInterface: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-4 border-b border-slate-50 space-y-3">
+        <div className="px-5 pb-3">
           <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-meta transition-colors" size={16} />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
             <input
               type="text"
-              placeholder="Search..."
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-meta transition-all focus:bg-white"
+              placeholder="Buscar mensagem ou contato..."
+              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all shadow-sm placeholder:text-slate-400"
             />
           </div>
+        </div>
 
-          <div className="flex justify-between items-center">
+        <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1 scrollbar-hide">
+          <div className="flex justify-between items-center px-2 mb-2 mt-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inbox ({contacts.length})</span>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${showFilters ? 'bg-meta/10 text-meta' : 'text-slate-500 hover:bg-slate-50'}`}
+              className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg transition-colors ${showFilters ? 'bg-blue-100 text-blue-700' : 'text-slate-400 hover:bg-slate-100'}`}
             >
-              <Filter size={14} /> Filtros
+              <Filter size={12} /> Filtros
             </button>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Inbox ({contacts.length})</span>
           </div>
 
           {showFilters && (
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 text-xs space-y-3 animate-fade-in-down">
-              <div>
-                <label className="block text-slate-400 mb-1">Status</label>
-                <select className="w-full bg-white border border-slate-200 rounded p-1.5 text-slate-700 focus:outline-none" onChange={(e) => setFilterStatus(e.target.value)} value={filterStatus}> <option value="all">Todos</option> </select>
-              </div>
+            <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 animate-slide-up">
+              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Status da Conversa</label>
+              <select className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <option value="all">Mostrar tudo</option>
+                <option value="unread">Não lidos</option>
+              </select>
             </div>
           )}
-        </div>
 
-        <div className="flex-1 overflow-y-auto">
           {contacts.map(contact => {
             const isActive = activeContactId === contact.id;
             return (
               <div
                 key={contact.id}
                 onClick={() => setActiveContactId(contact.id)}
-                className={`p-4 flex gap-3 cursor-pointer transition-all border-b border-slate-50 last:border-0 relative group ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
+                className={`p-3 flex gap-3 cursor-pointer transition-all duration-200 rounded-xl relative group ${isActive ? 'bg-white shadow-md ring-1 ring-slate-200 transform scale-[1.02]' : 'hover:bg-white hover:shadow-sm'}`}
               >
-                {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-gradient"></div>}
+                {/* Active Indicator Vertical Bar */}
+                {isActive && <div className="absolute left-0 top-3 bottom-3 w-1 bg-gradient-to-b from-blue-500 to-teal-400 rounded-r-full"></div>}
 
-                <div className="relative">
-                  <img src={contact.avatar} alt={contact.name} className={`w-12 h-12 rounded-full object-cover border-2 transition-all ${isActive ? 'border-meta' : 'border-transparent'}`} />
-                </div>
-                <div className="flex-1 min-w-0 py-0.5">
-                  <div className="flex justify-between items-baseline mb-1">
-                    <h3 className={`text-sm font-medium truncate ${isActive ? 'text-slate-900 font-semibold' : 'text-slate-700'}`}>{contact.name}</h3>
-                    <span className={`text-[10px] ${isActive ? 'text-meta font-medium' : 'text-slate-400'}`}>{contact.lastMessageTime}</span>
-                  </div>
-                  <p className={`text-xs truncate flex items-center gap-1 ${isActive ? 'text-slate-600' : 'text-slate-400'}`}>
-                    {contact.lastMessage}
-                  </p>
-                </div>
-                {contact.unreadCount > 0 && (
-                  <div className="flex flex-col items-end justify-center">
-                    <span className="w-5 h-5 bg-brand-gradient text-white text-[10px] font-bold flex items-center justify-center rounded-full shadow-sm">
+                <div className="relative shrink-0">
+                  <img src={contact.avatar} alt={contact.name} className={`w-12 h-12 rounded-full object-cover shadow-sm transition-all ${isActive ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`} />
+                  {contact.unreadCount > 0 &&
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-teal-400 to-blue-500 border-2 border-white text-white text-[10px] font-bold flex items-center justify-center rounded-full shadow-lg animate-bounce">
                       {contact.unreadCount}
                     </span>
+                  }
+                </div>
+                <div className="flex-1 min-w-0 py-0.5 flex flex-col justify-center">
+                  <div className="flex justify-between items-baseline mb-0.5">
+                    <h3 className={`text-sm truncate mr-2 ${isActive ? 'font-bold text-slate-800' : 'font-semibold text-slate-700'}`}>{contact.name}</h3>
+                    <span className={`text-[10px] font-medium shrink-0 ${isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`}>{contact.lastMessageTime}</span>
                   </div>
-                )}
+                  <p className={`text-xs truncate flex items-center gap-1 ${isActive ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
+                    {contact.lastMessage}
+                  </p>
+                  {/* Tags or Pipeline Stage could go here */}
+                </div>
               </div>
             )
           })}
@@ -375,102 +400,159 @@ const ChatInterface: React.FC = () => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-[#f0f2f5] relative bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
+      <div className="flex-1 flex flex-col bg-slate-50 relative">
+        {/* Background Pattern (Subtle Dots) */}
+        <div className="absolute inset-0 opacity-[0.4] pointer-events-none"
+          style={{
+            backgroundImage: `radial-gradient(#cbd5e1 1px, transparent 1px)`,
+            backgroundSize: '24px 24px'
+          }}>
+        </div>
+
         {/* Chat Header */}
         {activeContact ? (
           <>
-            <div className="h-20 bg-white/90 backdrop-blur-md border-b border-slate-100 flex justify-between items-center px-6 shadow-sm z-10">
+            <div className="glass-header h-20 border-b border-slate-200/60 flex justify-between items-center px-6 shadow-sm z-30 sticky top-0">
               <div className="flex items-center gap-4">
-                <div className="relative">
-                  <img src={activeContact.avatar} alt="" className="w-10 h-10 rounded-full border border-slate-200" />
+                <div className="relative cursor-pointer group">
+                  <img src={activeContact.avatar} alt="" className="w-11 h-11 rounded-full border-2 border-white shadow-md transition-transform group-hover:scale-105" />
+                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
                 </div>
                 <div>
-                  <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors">
                     {activeContact.name}
+                    <ChevronDown size={14} className="text-slate-400" />
                   </h2>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-slate-500 font-mono tracking-tight">{activeContact.phone}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeContact.unreadCount > 0 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
-                      {activeContact.unreadCount > 0 ? 'Não lido' : 'Lido'}
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500 font-mono tracking-tight bg-slate-100/50 px-1.5 rounded">{activeContact.phone}</span>
+                    {/* Tags */}
+                    <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Lead</span>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-slate-400">
-                <button className="p-2 hover:bg-slate-50 hover:text-meta rounded-full transition-colors"><Search size={20} /></button>
-                <button className="p-2 hover:bg-slate-50 hover:text-meta rounded-full transition-colors"><MoreVertical size={20} /></button>
+              <div className="flex items-center gap-3 text-slate-400">
+                <button className="p-2.5 hover:bg-slate-100/80 hover:text-blue-600 rounded-xl transition-all"><Search size={20} /></button>
+                <div className="h-6 w-px bg-slate-200 mx-1"></div>
+                <button className="p-2.5 hover:bg-slate-100/80 hover:text-blue-600 rounded-xl transition-all"><MoreVertical size={20} /></button>
               </div>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {isLoading && <div className="text-center text-slate-400 text-xs py-4">Carregando mensagens...</div>}
-
-              {messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[70%] rounded-2xl px-5 py-3 shadow-sm text-sm relative group border transition-all hover:shadow-md ${msg.sender === 'user'
-                      ? 'bg-brand-gradient text-white rounded-tr-none border-transparent'
-                      : 'bg-white text-slate-800 rounded-tl-none border-slate-100'
-                    }`}>
-                    {msg.type === MessageType.TEXT && <p className="leading-relaxed">{msg.content}</p>}
-
-                    {msg.type === MessageType.AUDIO && <AudioPlayer isUser={msg.sender === 'user'} />}
-
-                    {msg.type === MessageType.IMAGE && (
-                      <div className="mb-1 rounded-lg overflow-hidden border border-black/10">
-                        <img src={msg.content} alt="Attachment" className="max-w-full h-auto object-cover" />
-                      </div>
-                    )}
-
-                    {msg.fileName && (
-                      <div className={`flex items-center gap-3 p-3 rounded-xl border ${msg.sender === 'user' ? 'bg-white/10 border-white/10' : 'bg-slate-50 border-slate-100'}`}>
-                        <div className={`p-2 bg-white rounded-lg ${msg.sender === 'user' ? 'text-meta' : 'text-slate-600'}`}>
-                          <FileText size={20} />
-                        </div>
-                        <div className="overflow-hidden">
-                          <p className="font-medium truncate max-w-[150px]">{msg.fileName}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className={`text-[10px] mt-1.5 flex items-center justify-end gap-1 ${msg.sender === 'user' ? 'text-white/80' : 'text-slate-400'}`}>
-                      {msg.timestamp}
-                      {msg.sender === 'user' && (
-                        <span>
-                          {msg.status === 'read' ? <CheckCheck size={12} /> :
-                            msg.status === 'delivered' ? <CheckCheck size={12} className="text-slate-400" /> :
-                              <Check size={12} />}
-                        </span>
-                      )}
-                    </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 z-10">
+              {isLoading && (
+                <div className="flex justify-center py-4">
+                  <div className="bg-white/80 backdrop-blur px-4 py-1.5 rounded-full shadow-sm border border-slate-100 text-xs font-semibold text-blue-500 animate-pulse flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-bounce"></div>
+                    Sincronizando...
                   </div>
                 </div>
-              ))}
+              )}
+
+              {messages.map((msg, idx) => {
+                const isUser = msg.sender === 'user';
+                const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender;
+
+                return (
+                  <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-message group`}>
+
+                    {!isUser && showAvatar && (
+                      <div className="w-8 h-8 rounded-full bg-slate-200 mr-2 self-end mb-1 overflow-hidden shrink-0 shadow-sm ring-2 ring-white">
+                        <img src={activeContact.avatar} className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                    {!isUser && !showAvatar && <div className="w-8 mr-2 shrink-0"></div>}
+
+                    <div className={`max-w-[70%] rounded-2xl px-5 py-3 shadow-sm text-sm relative transition-all duration-300 hover:shadow-md ${isUser
+                      ? 'bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-tr-sm'
+                      : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'
+                      }`}>
+                      {msg.type === MessageType.TEXT && <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
+
+                      {msg.type === MessageType.AUDIO && <AudioPlayer isUser={msg.sender === 'user'} />}
+
+                      {msg.type === MessageType.IMAGE && (
+                        <div className="mb-2 rounded-xl overflow-hidden shadow-sm cursor-pointer hover:opacity-95 transition-opacity">
+                          <img src={msg.content} alt="Attachment" className="max-w-full h-auto object-cover" />
+                        </div>
+                      )}
+
+                      {msg.fileName && (
+                        <div className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer hover:bg-opacity-10 transition-colors ${msg.sender === 'user' ? 'bg-white/10 border-white/20' : 'bg-slate-50 border-slate-100'}`}>
+                          <div className={`p-2.5 rounded-lg ${msg.sender === 'user' ? 'bg-white/20 text-white' : 'bg-white text-blue-600 shadow-sm'}`}>
+                            <FileText size={20} />
+                          </div>
+                          <div className="overflow-hidden">
+                            <p className="font-semibold truncate max-w-[150px]">{msg.fileName}</p>
+                            <p className={`text-[10px] ${isUser ? 'text-white/70' : 'text-slate-400'}`}>Documento PDF</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className={`text-[10px] mt-1.5 flex items-center justify-end gap-1 select-none ${isUser ? 'text-white/70' : 'text-slate-400'}`}>
+                        {msg.timestamp}
+                        {msg.sender === 'user' && (
+                          <span className="ml-0.5">
+                            {msg.status === 'read' ? <CheckCheck size={13} className="text-white" /> :
+                              msg.status === 'delivered' ? <CheckCheck size={13} className="text-white/60" /> :
+                                <Check size={13} className="text-white/60" />}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
-            <div className="p-4 bg-white border-t border-slate-100">
-              <div className="flex items-end gap-3 max-w-4xl mx-auto">
-                <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl flex items-center px-4 py-2.5 focus-within:ring-2 focus-within:ring-meta/20 focus-within:border-meta transition-all shadow-inner">
-                  <input
-                    type="text"
+            {/* Elegant Floating Input Area */}
+            <div className="p-4 z-20">
+              <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex items-end p-2 transition-shadow hover:shadow-2xl">
+                <button className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Paperclip size={20} /></button>
+                <button className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Smile size={20} /></button>
+
+                <div className="flex-1 py-3 px-2">
+                  <textarea
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Type a message..."
-                    className="flex-1 bg-transparent border-none outline-none text-sm text-slate-800 placeholder:text-slate-400"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder="Digite sua mensagem..."
+                    className="w-full bg-transparent border-none outline-none text-sm text-slate-800 placeholder:text-slate-400 resize-none max-h-32 scrollbar-hide"
+                    rows={1}
+                    style={{ minHeight: '24px' }}
                   />
                 </div>
-                <button onClick={handleSendMessage} className="p-3 bg-brand-gradient text-white rounded-full hover:opacity-90 transition shadow-lg shadow-meta/20 transform hover:scale-105 active:scale-95">
-                  <Send size={20} strokeWidth={2} className="ml-0.5" />
-                </button>
+
+                {inputText.trim() ? (
+                  <button
+                    onClick={handleSendMessage}
+                    className="p-3 bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-full hover:shadow-lg hover:opacity-90 transition-all transform hover:scale-105 active:scale-95 m-1"
+                  >
+                    <Send size={18} fill="currentColor" className="ml-0.5" />
+                  </button>
+                ) : (
+                  <button className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors">
+                    <Mic size={20} />
+                  </button>
+                )}
+              </div>
+              <div className="text-center mt-2">
+                <p className="text-[10px] text-slate-400 font-medium">Pressione <kbd className="font-sans px-1 py-0.5 bg-slate-100 rounded text-slate-500 border border-slate-200">Enter</kbd> para enviar</p>
               </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-            <p>Selecione uma conversa para começar</p>
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50/50">
+            <div className="w-24 h-24 bg-white rounded-full shadow-lg flex items-center justify-center mb-6 animate-pulse">
+              <Smartphone size={40} className="text-blue-200" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-700 mb-2">Selecione uma conversa</h3>
+            <p className="max-w-xs text-center text-sm text-slate-500">Escolha um contato na lista ao lado ou inicie uma nova conversa para começar a atender.</p>
           </div>
         )}
       </div>
@@ -479,3 +561,4 @@ const ChatInterface: React.FC = () => {
 };
 
 export default ChatInterface;
+// Force reload
