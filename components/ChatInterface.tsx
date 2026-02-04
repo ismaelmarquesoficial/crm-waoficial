@@ -160,7 +160,7 @@ const ChatInterface: React.FC = () => {
         id: m.id,
         contactId: m.contact_id,
         sender: m.direction === 'INBOUND' ? 'contact' : 'user',
-        type: (m.type || 'text') as MessageType,
+        type: (m.type === 'template' ? 'text' : (m.type || 'text')) as MessageType,
         content: (['image', 'audio', 'video', 'document'].includes(m.type) && m.media_url) ? m.media_url : m.message,
         timestamp: new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }),
         status: m.status || 'read',

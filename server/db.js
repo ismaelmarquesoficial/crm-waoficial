@@ -1,5 +1,9 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 require('dotenv').config();
+
+// FORÇAR UTC EM TIMESTAMPS (OID 1114)
+// Isso impede que o Node converta 20:00 (UTC) para 20:00 (Local) e gere erro de 3h.
+types.setTypeParser(1114, (str) => new Date(str + 'Z'));
 
 const pool = new Pool({
     user: 'us_saas',

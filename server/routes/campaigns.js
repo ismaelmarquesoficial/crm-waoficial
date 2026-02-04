@@ -51,6 +51,7 @@ router.post('/', async (req, res) => {
     const { name, channelId, templateId, scheduledAt, recipients } = req.body;
 
     console.log(`📋 Dados recebidos: Nome=${name}, Channel=${channelId}, Template=${templateId}, Recipientes=${recipients?.length}`);
+    console.log(`🕒 scheduledAt recebido (RAW): ${scheduledAt} | Server Time (Local): ${new Date().toString()} | Server Time (UTC): ${new Date().toISOString()}`);
 
     // recipients: Array de { phone: '5511999...', variables: ['João', '10/12'] }
 

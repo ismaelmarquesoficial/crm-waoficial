@@ -33,12 +33,13 @@ const startWorker = (io) => {
 // Verificar e Ativar Campanhas Agendadas
 const checkScheduledCampaigns = async () => {
     try {
+        const utcNow = new Date();
         const res = await db.query(`
             UPDATE campaigns 
             SET status = 'processing' 
-            WHERE status = 'scheduled' AND scheduled_at <= NOW()
+            WHERE status = 'scheduled' AND scheduled_at <= $1
             RETURNING id, name
-        `);
+        `, [utcNow]);
         if (res.rowCount > 0) {
             console.log(`⏰ ${res.rowCount} campanha(s) agendada(s) iniciada(s):`, res.rows.map(c => c.name));
         }
@@ -231,13 +232,14 @@ const findContactId = async (tenantId, phone) => {
 const insertChatLog = async (msg, metaId, bodyText) => {
     try {
         const contactId = await findContactId(msg.tenant_id, msg.phone);
+        const timestamp = new Date(); // UTC Node.js
         await db.query(
             `INSERT INTO chat_logs 
             (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, direction, timestamp, created_at) 
-            VALUES ($1, $2, $3, $4, $5, 'template', 'OUTBOUND', NOW(), NOW())`,
-            [msg.tenant_id, contactId, msg.whatsapp_account_id, metaId, bodyText]
+            VALUES ($1, $2, $3, $4, $5, 'template', 'OUTBOUND', $6, $6)`,
+            [msg.tenant_id, contactId, msg.whatsapp_account_id, metaId, bodyText, timestamp]
         );
-        console.log(`✅ [WORKER] ChatLog salvo com sucesso! ID Contato: ${contactId}`);
+        console.log(`✅ [WORKER] ChatLog salvo com sucesso! ID Contato: ${contactId} | Time: ${timestamp.toISOString()}`);
     } catch (e) {
         console.error('⚠️ [WORKER] FALHA ao salvar log de chat:', e);
     }
