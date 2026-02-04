@@ -19,7 +19,8 @@ import {
   Layers,
   Wifi,
   WifiOff,
-  Smile
+  Smile,
+  ArrowLeft
 } from 'lucide-react';
 import { Contact, Message, MessageType } from '../types';
 
@@ -254,8 +255,9 @@ const ChatInterface: React.FC = () => {
   // 5. Render
   return (
     <div className="flex h-full bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-2xl ring-1 ring-slate-900/5">
-      {/* Sidebar List - Subtle Gradient on Background */}
-      <div className="w-full md:w-80 border-r border-slate-100 flex flex-col bg-gradient-to-br from-white to-slate-50">
+
+      {/* Sidebar List - Responsivo: Some no mobile se tiver chat ativo */}
+      <div className={`w-full md:w-80 border-r border-slate-100 flex-col bg-gradient-to-br from-white to-slate-50 ${activeContactId ? 'hidden md:flex' : 'flex'}`}>
 
         {/* Custom Channel Selector */}
         <div className="px-5 pt-5 pb-3 bg-transparent z-20">
@@ -399,8 +401,8 @@ const ChatInterface: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-slate-50 relative">
+      {/* Main Chat Area - Responsivo: Some no mobile se NÃO tiver ativa, em desktop sempre exibe */}
+      <div className={`flex-1 flex-col bg-slate-50 relative ${activeContactId ? 'flex' : 'hidden md:flex'}`}>
         {/* Background Pattern (Subtle Dots) */}
         <div className="absolute inset-0 opacity-[0.4] pointer-events-none"
           style={{
@@ -412,33 +414,40 @@ const ChatInterface: React.FC = () => {
         {/* Chat Header */}
         {activeContact ? (
           <>
-            <div className="glass-header h-20 border-b border-slate-200/60 flex justify-between items-center px-6 shadow-sm z-30 sticky top-0">
-              <div className="flex items-center gap-4">
+            <div className="glass-header h-20 border-b border-slate-200/60 flex justify-between items-center px-4 md:px-6 shadow-sm z-30 sticky top-0">
+              <div className="flex items-center gap-2 md:gap-4">
+                {/* Botão VOLTAR (Só mobile) */}
+                <button
+                  onClick={() => setActiveContactId(null)}
+                  className="md:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-full"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+
                 <div className="relative cursor-pointer group">
-                  <img src={activeContact.avatar} alt="" className="w-11 h-11 rounded-full border-2 border-white shadow-md transition-transform group-hover:scale-105" />
+                  <img src={activeContact.avatar} alt="" className="w-10 h-10 md:w-11 md:h-11 rounded-full border-2 border-white shadow-md transition-transform group-hover:scale-105" />
                   <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors">
+                  <h2 className="text-sm md:text-base font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors">
                     {activeContact.name}
-                    <ChevronDown size={14} className="text-slate-400" />
+                    <ChevronDown size={14} className="text-slate-400 hidden md:block" />
                   </h2>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 font-mono tracking-tight bg-slate-100/50 px-1.5 rounded">{activeContact.phone}</span>
-                    {/* Tags */}
-                    <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Lead</span>
+                    <span className="text-[10px] md:text-xs text-slate-500 font-mono tracking-tight bg-slate-100/50 px-1.5 rounded">{activeContact.phone}</span>
+                    <span className="hidden md:inline text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Lead</span>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 text-slate-400">
-                <button className="p-2.5 hover:bg-slate-100/80 hover:text-blue-600 rounded-xl transition-all"><Search size={20} /></button>
-                <div className="h-6 w-px bg-slate-200 mx-1"></div>
+              <div className="flex items-center gap-1 md:gap-3 text-slate-400">
+                <button className="p-2.5 hover:bg-slate-100/80 hover:text-blue-600 rounded-xl transition-all hidden md:block"><Search size={20} /></button>
+                <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block"></div>
                 <button className="p-2.5 hover:bg-slate-100/80 hover:text-blue-600 rounded-xl transition-all"><MoreVertical size={20} /></button>
               </div>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 z-10">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 z-10">
               {isLoading && (
                 <div className="flex justify-center py-4">
                   <div className="bg-white/80 backdrop-blur px-4 py-1.5 rounded-full shadow-sm border border-slate-100 text-xs font-semibold text-blue-500 animate-pulse flex items-center gap-2">
@@ -456,13 +465,13 @@ const ChatInterface: React.FC = () => {
                   <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-message group`}>
 
                     {!isUser && showAvatar && (
-                      <div className="w-8 h-8 rounded-full bg-slate-200 mr-2 self-end mb-1 overflow-hidden shrink-0 shadow-sm ring-2 ring-white">
+                      <div className="w-8 h-8 rounded-full bg-slate-200 mr-2 self-end mb-1 overflow-hidden shrink-0 shadow-sm ring-2 ring-white hidden md:block">
                         <img src={activeContact.avatar} className="w-full h-full object-cover" />
                       </div>
                     )}
-                    {!isUser && !showAvatar && <div className="w-8 mr-2 shrink-0"></div>}
+                    {!isUser && !showAvatar && <div className="w-8 mr-2 shrink-0 hidden md:block"></div>}
 
-                    <div className={`max-w-[70%] rounded-2xl px-5 py-3 shadow-sm text-sm relative transition-all duration-300 hover:shadow-md ${isUser
+                    <div className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 md:px-5 md:py-3 shadow-sm text-sm relative transition-all duration-300 hover:shadow-md ${isUser
                       ? 'bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-tr-sm'
                       : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'
                       }`}>
@@ -506,12 +515,12 @@ const ChatInterface: React.FC = () => {
             </div>
 
             {/* Elegant Floating Input Area */}
-            <div className="p-4 z-20">
-              <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex items-end p-2 transition-shadow hover:shadow-2xl">
-                <button className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Paperclip size={20} /></button>
-                <button className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Smile size={20} /></button>
+            <div className="p-2 md:p-4 z-20">
+              <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex items-end p-1.5 md:p-2 transition-shadow hover:shadow-2xl">
+                <button className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Paperclip size={20} /></button>
+                <button className="hidden md:block p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Smile size={20} /></button>
 
-                <div className="flex-1 py-3 px-2">
+                <div className="flex-1 py-2 md:py-3 px-2">
                   <textarea
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
@@ -521,7 +530,7 @@ const ChatInterface: React.FC = () => {
                         handleSendMessage();
                       }
                     }}
-                    placeholder="Digite sua mensagem..."
+                    placeholder="Digite..."
                     className="w-full bg-transparent border-none outline-none text-sm text-slate-800 placeholder:text-slate-400 resize-none max-h-32 scrollbar-hide"
                     rows={1}
                     style={{ minHeight: '24px' }}
@@ -541,18 +550,15 @@ const ChatInterface: React.FC = () => {
                   </button>
                 )}
               </div>
-              <div className="text-center mt-2">
-                <p className="text-[10px] text-slate-400 font-medium">Pressione <kbd className="font-sans px-1 py-0.5 bg-slate-100 rounded text-slate-500 border border-slate-200">Enter</kbd> para enviar</p>
-              </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50/50">
-            <div className="w-24 h-24 bg-white rounded-full shadow-lg flex items-center justify-center mb-6 animate-pulse">
-              <Smartphone size={40} className="text-blue-200" />
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 p-4">
+            <div className="w-20 h-20 md:w-24 md:h-24 bg-white rounded-full shadow-lg flex items-center justify-center mb-6 animate-pulse">
+              <Smartphone size={32} className="md:w-10 md:h-10 text-blue-200" />
             </div>
             <h3 className="text-lg font-bold text-slate-700 mb-2">Selecione uma conversa</h3>
-            <p className="max-w-xs text-center text-sm text-slate-500">Escolha um contato na lista ao lado ou inicie uma nova conversa para começar a atender.</p>
+            <p className="max-w-xs text-center text-xs md:text-sm text-slate-500">Escolha um contato na lista para começar a atender.</p>
           </div>
         )}
       </div>
@@ -561,4 +567,3 @@ const ChatInterface: React.FC = () => {
 };
 
 export default ChatInterface;
-// Force reload

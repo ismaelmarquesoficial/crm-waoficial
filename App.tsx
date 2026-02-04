@@ -32,7 +32,17 @@ const App: React.FC = () => {
     return stored ? JSON.parse(stored) : null;
   });
   const [currentView, setCurrentView] = useState<View>('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth > 768);
+
+  // Auto-close sidebar on resize to mobile
+  React.useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) setIsSidebarOpen(false);
+      else setIsSidebarOpen(true);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [companyName, setCompanyName] = useState('');
 
   React.useEffect(() => {
@@ -119,18 +129,18 @@ const App: React.FC = () => {
       {/* Modern Sidebar */}
       <aside
         className={`
-          fixed md:relative inset-y-0 left-0 z-30 bg-white flex flex-col justify-between 
+          fixed md:relative inset-y-0 left-0 z-50 bg-white flex flex-col justify-between 
           shadow-[4px_0_24px_-12px_rgba(0,0,0,0.05)] border-r border-slate-100 
-          transition-all duration-300 ease-in-out
-          ${isSidebarOpen ? 'w-72 translate-x-0' : 'w-0 -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden md:border-none'}
+          transition-all duration-300 ease-in-out overflow-hidden
+          ${isSidebarOpen ? 'w-72 translate-x-0' : 'w-0 -translate-x-full md:w-0 md:translate-x-0 border-none'}
         `}
       >
         {/* Inner container to maintain width during collapse */}
-        <div className="w-72 flex flex-col h-full overflow-y-auto overflow-x-hidden">
+        <div className="w-72 flex flex-col h-full overflow-y-auto overflow-x-hidden bg-white">
           <div className="p-6">
             <div className="flex items-center justify-between mb-10 px-2">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-brand-gradient rounded-xl flex items-center justify-center shadow-lg shadow-meta/20 text-white font-extrabold text-xl tracking-tight transform transition-transform hover:scale-105">
+                <div className="w-10 h-10 bg-brand-gradient rounded-xl flex items-center justify-center shadow-lg shadow-meta/20 text-white font-extrabold text-xl tracking-tight transform transition-transform hover:scale-105 shrink-0">
                   T
                 </div>
                 <div>
