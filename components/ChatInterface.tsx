@@ -154,7 +154,7 @@ const ChatInterface: React.FC = () => {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
   // 4. Effects
@@ -331,8 +331,8 @@ const ChatInterface: React.FC = () => {
               {messages.map(msg => (
                 <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[70%] rounded-2xl px-5 py-3 shadow-sm text-sm relative group border transition-all hover:shadow-md ${msg.sender === 'user'
-                      ? 'bg-brand-gradient text-white rounded-tr-none border-transparent'
-                      : 'bg-white text-slate-800 rounded-tl-none border-slate-100'
+                    ? 'bg-brand-gradient text-white rounded-tr-none border-transparent'
+                    : 'bg-white text-slate-800 rounded-tl-none border-slate-100'
                     }`}>
                     {msg.type === MessageType.TEXT && <p className="leading-relaxed">{msg.content}</p>}
 
