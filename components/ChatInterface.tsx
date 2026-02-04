@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import {
   Search,
   MoreVertical,
@@ -31,8 +32,15 @@ style.innerHTML = `
     from { opacity: 0; transform: translateY(10px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
   .animate-message {
     animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-fade-in-up {
+    animation: fadeInUp 0.2s ease-out forwards;
   }
   .scrollbar-hide::-webkit-scrollbar {
       display: none;
@@ -76,7 +84,10 @@ const ChatInterface: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('all');
+
+  // Emoji Picker State
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
 
   // Channels and Filtering
   const [channels, setChannels] = useState<any[]>([]);
@@ -94,6 +105,9 @@ const ChatInterface: React.FC = () => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsChannelDropdownOpen(false);
+      }
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -191,6 +205,10 @@ const ChatInterface: React.FC = () => {
       fetchMessages(activeContactId);
       fetchChats();
     } catch (err) { console.error(err); }
+  };
+
+  const onEmojiClick = (emojiData: EmojiClickData) => {
+    setInputText((prev) => prev + emojiData.emoji);
   };
 
   const scrollToBottom = () => {
@@ -515,10 +533,28 @@ const ChatInterface: React.FC = () => {
             </div>
 
             {/* Elegant Floating Input Area */}
-            <div className="p-2 md:p-4 z-20">
+            <div className="p-2 md:p-4 z-20 relative">
+              {/* Emoji Picker Popover */}
+              {showEmojiPicker && (
+                <div ref={emojiPickerRef} className="absolute bottom-20 left-4 md:left-10 z-50 shadow-2xl rounded-2xl animate-fade-in-up">
+                  <EmojiPicker
+                    onEmojiClick={onEmojiClick}
+                    theme={Theme.LIGHT}
+                    width={300}
+                    height={400}
+                    previewConfig={{ showPreview: false }}
+                  />
+                </div>
+              )}
+
               <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex items-end p-1.5 md:p-2 transition-shadow hover:shadow-2xl">
                 <button className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Paperclip size={20} /></button>
-                <button className="hidden md:block p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Smile size={20} /></button>
+                <button
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className={`hidden md:block p-3 rounded-full transition-colors ${showEmojiPicker ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}`}
+                >
+                  <Smile size={20} />
+                </button>
 
                 <div className="flex-1 py-2 md:py-3 px-2">
                   <textarea
