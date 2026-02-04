@@ -14,7 +14,11 @@ import {
   FileText,
   Image as ImageIcon,
   Video as VideoIcon,
-  Smartphone
+  Smartphone,
+  ChevronDown,
+  Layers,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { Contact, Message, MessageType } from '../types';
 
@@ -54,11 +58,24 @@ const ChatInterface: React.FC = () => {
   // Channels and Filtering
   const [channels, setChannels] = useState<any[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string>('all');
+  const [isChannelDropdownOpen, setIsChannelDropdownOpen] = useState(false);
 
   // 2. Refs
   const activeContactIdRef = useRef(activeContactId);
   useEffect(() => { activeContactIdRef.current = activeContactId; }, [activeContactId]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsChannelDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // 3. Helper Functions
   const fetchChannels = useCallback(async () => {
@@ -205,31 +222,89 @@ const ChatInterface: React.FC = () => {
 
   const activeContact = contacts.find(c => c.id === activeContactId);
 
+  // Helper to get dropdown label
+  const getSelectedChannelLabel = () => {
+    if (selectedChannel === 'all') return 'Todas as Contas';
+    const ch = channels.find(c => c.id === parseInt(selectedChannel));
+    return ch ? (ch.instance_name || ch.verified_name || ch.phone_number_id) : 'Selecionar';
+  };
+
   // 5. Render
   return (
     <div className="flex h-full bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
       {/* Sidebar List */}
       <div className="w-full md:w-80 border-r border-slate-100 flex flex-col bg-white">
 
-        {/* Channel Selector Header */}
-        <div className="px-4 pt-4 pb-2 border-b border-slate-50 bg-slate-50/50">
-          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Canal (Conta)</label>
-          <div className="relative">
-            <select
-              value={selectedChannel}
-              onChange={(e) => setSelectedChannel(e.target.value)}
-              className="w-full appearance-none bg-white border border-slate-200 text-slate-700 text-sm rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-1 focus:ring-meta focus:border-meta font-medium"
+        {/* Custom Channel Selector - Premium Look */}
+        <div className="px-4 pt-4 pb-2 border-b border-slate-50 bg-slate-50/50 z-20">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5 ml-0.5">Canal de Atendimento</label>
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setIsChannelDropdownOpen(!isChannelDropdownOpen)}
+              className="w-full bg-white border border-slate-200 hover:border-meta/50 transition-colors text-slate-700 text-sm rounded-xl px-3 py-2.5 flex items-center justify-between group shadow-sm"
             >
-              <option value="all">📱 Todas as Contas</option>
-              {channels.map((ch: any) => (
-                <option key={ch.id} value={ch.id}>
-                  {ch.status === 'CONNECTED' ? '🟢' : '⚫'} {ch.instance_name || ch.verified_name || ch.phone_number_id}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
-              <Smartphone size={14} />
-            </div>
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${selectedChannel === 'all' ? 'bg-meta/10 text-meta' : 'bg-green-100 text-green-600'}`}>
+                  {selectedChannel === 'all' ? <Layers size={16} /> : <Smartphone size={16} />}
+                </div>
+                <div className="flex flex-col items-start truncate">
+                  <span className="font-semibold text-xs text-slate-800 truncate block w-full text-left">{getSelectedChannelLabel()}</span>
+                  <span className="text-[10px] text-slate-400">
+                    {selectedChannel === 'all' ? 'Visualizar tudo' : 'Filtrado'}
+                  </span>
+                </div>
+              </div>
+              <ChevronDown size={14} className={`text-slate-400 group-hover:text-meta transition-transform duration-200 ${isChannelDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isChannelDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden animate-fade-in-down origin-top">
+                <div className="max-h-60 overflow-y-auto py-1">
+                  <button
+                    onClick={() => { setSelectedChannel('all'); setIsChannelDropdownOpen(false); }}
+                    className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors ${selectedChannel === 'all' ? 'bg-meta/5' : ''}`}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                      <Layers size={16} />
+                    </div>
+                    <div>
+                      <p className={`text-xs font-semibold ${selectedChannel === 'all' ? 'text-meta' : 'text-slate-700'}`}>Todas as Contas</p>
+                      <p className="text-[10px] text-slate-400">Ver mensagens de todos</p>
+                    </div>
+                    {selectedChannel === 'all' && <Check size={14} className="ml-auto text-meta" />}
+                  </button>
+
+                  <div className="h-px bg-slate-100 my-1 mx-3"></div>
+
+                  {channels.map((ch: any) => {
+                    const isConnected = ch.status === 'CONNECTED';
+                    const isSelected = selectedChannel === String(ch.id);
+                    return (
+                      <button
+                        key={ch.id}
+                        onClick={() => { setSelectedChannel(String(ch.id)); setIsChannelDropdownOpen(false); }}
+                        className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors ${isSelected ? 'bg-green-50/50' : ''}`}
+                      >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isConnected ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                          {isConnected ? <Wifi size={16} /> : <WifiOff size={16} />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex justify-between items-center">
+                            <p className={`text-xs font-semibold truncate ${isSelected ? 'text-green-700' : 'text-slate-700'}`}>
+                              {ch.instance_name || ch.verified_name || 'Conta WhatsApp'}
+                            </p>
+                            {isConnected && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>}
+                          </div>
+                          <p className="text-[10px] text-slate-400 truncate">{ch.display_phone_number || ch.phone_number_id}</p>
+                        </div>
+                        {isSelected && <Check size={14} className="ml-auto text-green-600" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -315,6 +390,9 @@ const ChatInterface: React.FC = () => {
                   </h2>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-slate-500 font-mono tracking-tight">{activeContact.phone}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeContact.unreadCount > 0 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
+                      {activeContact.unreadCount > 0 ? 'Não lido' : 'Lido'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -331,8 +409,8 @@ const ChatInterface: React.FC = () => {
               {messages.map(msg => (
                 <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[70%] rounded-2xl px-5 py-3 shadow-sm text-sm relative group border transition-all hover:shadow-md ${msg.sender === 'user'
-                    ? 'bg-brand-gradient text-white rounded-tr-none border-transparent'
-                    : 'bg-white text-slate-800 rounded-tl-none border-slate-100'
+                      ? 'bg-brand-gradient text-white rounded-tr-none border-transparent'
+                      : 'bg-white text-slate-800 rounded-tl-none border-slate-100'
                     }`}>
                     {msg.type === MessageType.TEXT && <p className="leading-relaxed">{msg.content}</p>}
 
