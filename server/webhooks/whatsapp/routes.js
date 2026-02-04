@@ -155,6 +155,7 @@ router.route('/') // O prefixo /api/webhooks/whatsapp já está no index.js
 
                 // 3. Processar Mensagens
                 if (value.messages && value.messages.length > 0) {
+                    // ... (lógica existente mantida, apenas colapsada aqui no replace)
                     const message = value.messages[0];
                     console.log(`💬 Processando mensagem de: ${message.from}`);
 
@@ -167,24 +168,18 @@ router.route('/') // O prefixo /api/webhooks/whatsapp já está no index.js
                                 timestamp: Date.now()
                             });
                         }
-                        return res.sendStatus(200); // Para por aqui, não precisa salvar no banco
+                        return res.sendStatus(200);
                     }
-                    // -------------------------------------
 
                     const contactInfo = value.contacts ? value.contacts[0] : null;
-
                     const contactPhone = message.from;
                     const contactName = contactInfo?.profile?.name || contactPhone;
 
-                    // A. Achar ou Criar Contato
                     const contactId = await WhatsAppService.findOrCreateContact(tenantId, contactPhone, contactName);
-
-                    // B. Salvar Mensagem
                     const savedMessage = await WhatsAppService.saveMessage(tenantId, contactId, accountId, message);
 
                     console.log(`✅ Mensagem salva no banco! ID: ${savedMessage.id}`);
 
-                    // C. Notificar Frontend (Socket.io)
                     if (io) {
                         io.to(`tenant_${tenantId}`).emit('new_message', {
                             contactId: contactId,
@@ -192,8 +187,37 @@ router.route('/') // O prefixo /api/webhooks/whatsapp já está no index.js
                         });
                         console.log(`📡 Evento 'new_message' disparado via Socket!`);
                     }
-                } else {
-                    console.log('ℹ️ O evento não contém mensagens de texto (pode ser status de entrega: sent/delivered/read).');
+
+                }
+
+                // 4. Processar Status (Sent, Delivered, Read)
+                else if (value.statuses && value.statuses.length > 0) {
+                    const statusObj = value.statuses[0];
+                    const wamid = statusObj.id;
+                    const newStatus = statusObj.status; // sent, delivered, read, failed
+
+                    console.log(`🔖 Status Update: ${newStatus.toUpperCase()} para msg ${wamid}`);
+
+                    // Atualizar no banco
+                    const updateRes = await db.query(
+                        "UPDATE chat_logs SET status = $1 WHERE wamid = $2 RETURNING id, contact_id",
+                        [newStatus, wamid]
+                    );
+
+                    if (updateRes.rowCount > 0 && io) {
+                        // Notificar frontend
+                        const { id: msgId, contact_id: contactId } = updateRes.rows[0];
+                        io.to(`tenant_${tenantId}`).emit('message_status_update', {
+                            id: msgId,
+                            wamid,
+                            status: newStatus,
+                            contactId
+                        });
+                        console.log(`📡 Socket enviado: message_status_update -> ${newStatus}`);
+                    }
+                }
+                else {
+                    console.log('ℹ️ O evento não contém mensagens nem status relevantes.');
                 }
 
             } catch (err) {
