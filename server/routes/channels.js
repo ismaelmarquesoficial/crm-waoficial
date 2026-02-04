@@ -83,8 +83,12 @@ router.post('/whatsapp-official', async (req, res) => {
         const metaData = metaResponse.data;
         console.log('✅ Resposta da Meta:', metaData);
 
-        // Respeitar o status real retornado pela Meta
-        finalStatus = metaData.status || 'PENDING';
+        // Respeitar o status real, mas se for CONNECTED na Meta, salvar como API_CONNECTED para forçar fluxo de Webhook
+        finalStatus = (metaData.status === 'CONNECTED' || metaData.status === 'connected') ? 'API_CONNECTED' : (metaData.status || 'PENDING');
+
+        // Status Translation Log
+        console.log(`✅ Status Final Definido: ${metaData.status} -> ${finalStatus}`);
+
         qualityRating = metaData.quality_rating;
         displayPhone = metaData.display_phone_number;
         verifiedName = metaData.verified_name;
@@ -208,7 +212,7 @@ router.post('/:id/test-connection', async (req, res) => {
 router.patch('/:id/status', async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
-    if (!['PENDING', 'CONNECTED', 'VERIFIED'].includes(status)) return res.status(400).json({ error: 'Status inválido.' });
+    if (!['PENDING', 'CONNECTED', 'VERIFIED', 'DISCONNECTED', 'API_CONNECTED'].includes(status)) return res.status(400).json({ error: 'Status inválido.' });
     try {
         await db.query("UPDATE whatsapp_accounts SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3", [status, id, req.tenantId]);
         res.json({ message: 'Status atualizado.', status });

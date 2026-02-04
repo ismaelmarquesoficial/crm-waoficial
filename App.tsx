@@ -33,6 +33,18 @@ const App: React.FC = () => {
   });
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [companyName, setCompanyName] = useState('');
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      fetch('http://localhost:3001/api/settings/company', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(r => r.json())
+        .then(d => { if (d.name) setCompanyName(d.name); })
+        .catch(() => { });
+    }
+  }, [isAuthenticated]);
 
   const handleLogin = () => {
     setIsAuthenticated(true);
@@ -122,7 +134,7 @@ const App: React.FC = () => {
                   T
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold tracking-tight text-slate-900 leading-none">Talke.ia</h1>
+                  <h1 className="text-lg font-bold tracking-tight text-slate-900 leading-none">{companyName || 'Talke.ia'}</h1>
                   <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Workspace</span>
                 </div>
               </div>
@@ -224,8 +236,8 @@ const App: React.FC = () => {
                 <img src="https://picsum.photos/200" alt="Avatar" className="w-full h-full object-cover" />
               </div>
               <div className="hidden lg:block text-left leading-tight">
-                <p className="text-sm font-semibold text-slate-800">Admin User</p>
-                <p className="text-[10px] font-medium text-slate-500">Tenant #1042</p>
+                <p className="text-sm font-bold text-slate-800">{user?.name || 'Usuário'}</p>
+                <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">{user?.role === 'superadmin' ? 'Super Admin' : user?.role || 'Membro'}</p>
               </div>
               <ChevronDown size={14} className="text-slate-400 hidden lg:block" />
             </div>

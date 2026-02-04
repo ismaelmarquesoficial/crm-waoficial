@@ -53,18 +53,20 @@ router.route('/') // O prefixo /api/webhooks/whatsapp já está no index.js
                     if (targetTenantId) {
                         // Ativa apenas contas deste Tenant (Status intermediário VERIFIED)
                         updateResult = await db.query(
-                            "UPDATE whatsapp_accounts SET status = 'VERIFIED', updated_at = NOW() WHERE tenant_id = $1 AND status = 'PENDING'",
+                            "UPDATE whatsapp_accounts SET status = 'VERIFIED', updated_at = NOW() WHERE tenant_id = $1 AND (status = 'PENDING' OR status = 'API_CONNECTED') RETURNING id",
                             [targetTenantId]
                         );
 
-                        // Notificar Frontend se possível
+                        // Notificar Frontend (Socket.IO)
                         const io = req.app.get('io');
-                        if (io) {
-                            // Infelizmente não sabemos o ID específico de cada canal atualizado sem um SELECT antes,
-                            // mas podemos emitir um evento genérico de 'refresh_channels' ou confiar que o usuário dará refresh.
-                            // Melhor: O frontend vai reagir ao próximo teste.
-                            console.log(`📡 Status VERIFIED definido para tenant ${targetTenantId}`);
+                        if (io && updateResult.rows.length > 0) {
+                            updateResult.rows.forEach(row => {
+                                console.log(`📡 Emitindo status VERIFIED para canal ${row.id}`);
+                                io.to(`tenant_${targetTenantId}`).emit('channel_status_update', { id: row.id, status: 'VERIFIED' });
+                            });
                         }
+
+                        console.log(`📡 Status VERIFIED definido para tenant ${targetTenantId}`);
 
                     } else {
                         // Token Global
