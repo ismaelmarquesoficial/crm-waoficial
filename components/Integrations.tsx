@@ -307,11 +307,17 @@ const IntegrationScreen: React.FC = () => {
 
   const fetchChannels = async () => {
     const token = localStorage.getItem('token');
+    if (!token) return;
     try {
       const res = await fetch('http://localhost:3001/api/channels', { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        if (res.status === 401) showNotification('Sessão expirada.', 'error');
+        setChannels([]);
+        return;
+      }
       const data = await res.json();
-      setChannels(data);
-    } catch (error) { console.error(error); }
+      setChannels(Array.isArray(data) ? data : []);
+    } catch (error) { console.error(error); setChannels([]); }
   };
 
   const fetchTeam = async () => {
