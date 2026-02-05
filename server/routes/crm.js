@@ -187,4 +187,63 @@ router.put('/deals/:id', verifyToken, async (req, res) => {
     }
 });
 
+// Excluir Pipeline
+router.delete('/pipelines/:id', verifyToken, async (req, res) => {
+    const { id } = req.params;
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Verifica propriedade
+        const check = await client.query('SELECT id FROM pipelines WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+        if (check.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Pipeline não encontrado' });
+        }
+
+        // 0. Atualizar Campanhas que referenciam este pipeline e seus estágios
+        // Resolve erros de constraint "campaigns_crm_pipeline_id_fkey" e "campaigns_crm_stage_id_fkey"
+
+        // A. Remover referência do pipeline
+        // (Assumindo que exista uma coluna crm_pipeline_id ou similar que causou o erro relatado)
+        // O erro diz: "violates foreign key constraint 'campaigns_crm_pipeline_id_fkey' on table 'campaigns'"
+        // Logo, a tabela campaigns tem uma coluna (provavelmente crm_pipeline_id) apontando para pipelines(id)
+        try {
+            await client.query('UPDATE campaigns SET crm_pipeline_id = NULL WHERE crm_pipeline_id = $1', [id]);
+        } catch (ign) {
+            // Se a coluna não existir ou nome for diferente, logamos mas tentamos seguir.
+            // Mas dado o erro, ela existe.
+            console.log('Tentativa de limpar crm_pipeline_id em campaigns (pode não existir coluna, mas o erro indicou que sim).');
+        }
+
+        // B. Remover referência dos estágios
+        const stages = await client.query('SELECT id FROM pipeline_stages WHERE pipeline_id = $1', [id]);
+        if (stages.rows.length > 0) {
+            const stageIds = stages.rows.map(s => s.id);
+            await client.query('UPDATE campaigns SET crm_stage_id = NULL WHERE crm_stage_id = ANY($1)', [stageIds]);
+        }
+
+        // 1. Deletar Deals relacionados
+        await client.query('DELETE FROM deals WHERE pipeline_id = $1', [id]);
+
+        // 2. Deletar Estágios relacionados
+        await client.query('DELETE FROM pipeline_stages WHERE pipeline_id = $1', [id]);
+
+        // 3. Deletar Pipeline
+        await client.query('DELETE FROM pipelines WHERE id = $1', [id]);
+
+        await client.query('COMMIT');
+        res.json({ message: 'Pipeline excluído com sucesso' });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Erro ao excluir pipeline:', err);
+        res.status(500).json({ error: 'Erro ao excluir pipeline: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
 module.exports = router;

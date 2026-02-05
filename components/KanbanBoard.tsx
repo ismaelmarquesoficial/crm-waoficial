@@ -13,7 +13,9 @@ import {
    Clock,
    ArrowRight,
    LayoutGrid,
-   List
+   List,
+   Trash2,
+   AlertTriangle
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Contact, PipelineStage } from '../types';
@@ -211,6 +213,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
    const [selectedContact, setSelectedContact] = useState<Deal | null>(null);
    const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
    const [isLoading, setIsLoading] = useState(true);
+   const [pipelineToDelete, setPipelineToDelete] = useState<number | null>(null);
 
    // Load Pipelines
    useEffect(() => {
@@ -334,6 +337,45 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
       }
    };
 
+   const handleDeletePipelineClick = (pipelineId: number) => {
+      setPipelineToDelete(pipelineId);
+   };
+
+   const confirmDeletePipeline = async () => {
+      if (!pipelineToDelete) return;
+      const pipelineId = pipelineToDelete;
+
+      try {
+         const token = localStorage.getItem('token');
+         const res = await fetch(`http://localhost:3001/api/crm/pipelines/${pipelineId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+         });
+
+         if (res.ok) {
+            const newPipelines = pipelines.filter(p => p.id !== pipelineId);
+            setPipelines(newPipelines);
+            if (activePipelineId === pipelineId) {
+               if (newPipelines.length > 0) {
+                  setActivePipelineId(newPipelines[0].id);
+               } else {
+                  setActivePipelineId(null);
+                  setStages([]);
+                  setCards([]);
+               }
+            }
+         } else {
+            const errData = await res.json();
+            alert(errData.error || 'Erro ao excluir pipeline');
+         }
+      } catch (err) {
+         console.error('Erro ao excluir pipeline', err);
+         alert('Erro ao excluir pipeline');
+      } finally {
+         setPipelineToDelete(null);
+      }
+   };
+
    const onDragEnd = async (result: DropResult) => {
       const { destination, source, draggableId } = result;
 
@@ -396,6 +438,15 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                      <p className="text-xs text-slate-400 font-medium">Gerencie suas oportunidades</p>
                   </div>
                </div>
+               {activePipelineId && (
+                  <button
+                     onClick={() => handleDeletePipelineClick(activePipelineId)}
+                     className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                     title="Excluir pipeline atual"
+                  >
+                     <Trash2 size={16} />
+                  </button>
+               )}
             </div>
 
             {/* Center: Pipeline Selector (Premium Pill Design) */}
@@ -544,6 +595,37 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                      }
                   }}
                />
+            </div>
+         )}
+
+         {/* Delete Confirmation Modal */}
+         {pipelineToDelete && (
+            <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-sm animate-fade-in flex items-center justify-center p-4">
+               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 animate-scale-in">
+                  <div className="flex flex-col items-center text-center">
+                     <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                        <AlertTriangle size={32} className="text-red-500" />
+                     </div>
+                     <h2 className="text-xl font-bold text-slate-900 mb-2">Excluir Pipeline?</h2>
+                     <p className="text-sm text-slate-500 mb-6 px-4">
+                        Esta ação não pode ser desfeita. Todos os <b>negócios (deals)</b> e <b>etapas</b> vinculados a este pipeline serão perdidos permanentemente.
+                     </p>
+                     <div className="flex gap-3 w-full">
+                        <button
+                           onClick={() => setPipelineToDelete(null)}
+                           className="flex-1 py-3 text-slate-600 font-bold bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                        >
+                           Cancelar
+                        </button>
+                        <button
+                           onClick={confirmDeletePipeline}
+                           className="flex-1 py-3 text-white font-bold bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-lg shadow-red-200"
+                        >
+                           Sim, excluir
+                        </button>
+                     </div>
+                  </div>
+               </div>
             </div>
          )}
       </div>
