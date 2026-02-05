@@ -23,9 +23,16 @@ import {
   Smile,
   ArrowLeft,
   X,
-  Tag as TagIcon
+  Tag as TagIcon,
+  User,
+  Mail,
+  Phone,
+  TrendingUp,
+  Edit3,
+  Plus
 } from 'lucide-react';
 import TagBadge from './TagBadge';
+import TagManager from './TagManager';
 import { Contact, Message, MessageType } from '../types';
 
 // Inject custom animations
@@ -98,6 +105,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
 
+  // Contact Info Modal
+  const [showContactInfo, setShowContactInfo] = useState(false);
+  const [contactDetails, setContactDetails] = useState<any>(null);
+  const [showTagManagerModal, setShowTagManagerModal] = useState(false);
+  const [showPipelineModal, setShowPipelineModal] = useState(false);
+  const [pipelines, setPipelines] = useState<any[]>([]);
+  const [selectedPipeline, setSelectedPipeline] = useState<string>('');
+  const [selectedStage, setSelectedStage] = useState<string>('');
+
   // Channels and Filtering
   const [channels, setChannels] = useState<any[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string>('all');
@@ -109,6 +125,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const contactModalRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -118,6 +135,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       }
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
         setShowEmojiPicker(false);
+      }
+      if (contactModalRef.current && !contactModalRef.current.contains(event.target as Node)) {
+        setShowContactInfo(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -254,6 +274,79 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
   const onEmojiClick = (emojiData: EmojiClickData) => {
     setInputText((prev) => prev + emojiData.emoji);
+  };
+
+  const fetchContactDetails = async (contactId: string) => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/chat/contacts/${contactId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setContactDetails(data);
+        setShowContactInfo(true);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar detalhes do contato:', err);
+    }
+  };
+
+  const fetchPipelinesData = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/crm/pipelines', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPipelines(data);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar pipelines:', err);
+    }
+  };
+
+  const handleTagsUpdate = (newTags: string[]) => {
+    if (contactDetails) {
+      setContactDetails({ ...contactDetails, tags: newTags });
+      // Atualizar também na lista de contatos
+      setContacts(prev => prev.map(c =>
+        c.id === contactDetails.id ? { ...c, tags: newTags } : c
+      ));
+    }
+  };
+
+  const handleMoveToPipeline = async () => {
+    if (!selectedPipeline || !selectedStage || !contactDetails) return;
+
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/crm/deals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          contact_id: contactDetails.id,
+          pipeline_id: selectedPipeline,
+          stage_id: selectedStage,
+          title: contactDetails.name,
+          value: 0
+        })
+      });
+
+      if (res.ok) {
+        // Recarregar detalhes do contato
+        await fetchContactDetails(contactDetails.id);
+        setShowPipelineModal(false);
+        setSelectedPipeline('');
+        setSelectedStage('');
+      }
+    } catch (err) {
+      console.error('Erro ao mover para pipeline:', err);
+    }
   };
 
   const scrollToBottom = () => {
@@ -560,7 +653,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                   <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
                 </div>
                 <div>
-                  <h2 className="text-sm md:text-base font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors">
+                  <h2
+                    onClick={() => fetchContactDetails(activeContact.id)}
+                    className="text-sm md:text-base font-bold text-slate-800 flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+                  >
                     {activeContact.name}
                     <ChevronDown size={14} className="text-slate-400 hidden md:block" />
                   </h2>
@@ -725,6 +821,244 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
           </div>
         )}
       </div>
+
+      {/* Modal de Informações do Contato */}
+      {showContactInfo && contactDetails && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
+          <div ref={contactModalRef} className="bg-white rounded-[2.5rem] max-w-2xl w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+            {/* Header com degradê */}
+            <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/30 font-bold text-2xl text-white shadow-lg">
+                  {contactDetails.name?.charAt(0).toUpperCase() || '?'}
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold text-white">{contactDetails.name}</h2>
+                  <div className="flex items-center gap-2 text-white/80 text-xs font-medium mt-1">
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                      Ativo no Sistema
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowContactInfo(false)}
+                className="absolute top-6 right-6 p-2 hover:bg-white/20 rounded-xl text-white transition-all z-10"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {/* Conteúdo do Modal */}
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Informações de Contato</label>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
+                        <div className="w-9 h-9 bg-gradient-to-r from-blue-600 to-teal-500 rounded-lg shadow-sm flex items-center justify-center text-white">
+                          <Phone size={16} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">WhatsApp</p>
+                          <p className="text-xs font-bold text-slate-700">{contactDetails.phone}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
+                        <div className="w-9 h-9 bg-gradient-to-r from-blue-600 to-teal-500 rounded-lg shadow-sm flex items-center justify-center text-white">
+                          <Mail size={16} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</p>
+                          <p className="text-xs font-bold text-slate-700 truncate">{contactDetails.email || 'Não informado'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tags do Cliente</label>
+                      <button
+                        onClick={() => {
+                          setShowTagManagerModal(true);
+                          fetchPipelinesData();
+                        }}
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
+                      >
+                        <Edit3 size={12} />
+                        Gerenciar
+                      </button>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      {contactDetails.tags && contactDetails.tags.length > 0 ? (
+                        <TagBadge tags={contactDetails.tags} maxVisible={5} size="md" />
+                      ) : (
+                        <p className="text-[10px] text-slate-400 italic">Nenhuma tag atribuída</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Presença em Pipelines</label>
+                      <button
+                        onClick={() => {
+                          setShowPipelineModal(true);
+                          fetchPipelinesData();
+                        }}
+                        className="text-[10px] font-bold text-green-600 hover:text-green-700 flex items-center gap-1 transition-colors"
+                      >
+                        <Plus size={12} />
+                        Adicionar
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {contactDetails.deals && contactDetails.deals.length > 0 ? (
+                        contactDetails.deals.map((deal: any) => (
+                          <div key={deal.id} className="p-3 bg-white rounded-xl border border-slate-100 shadow-sm border-l-4" style={{ borderLeftColor: deal.stage_color }}>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase">{deal.pipeline_name}</p>
+                              <Layers size={12} className="text-slate-300" />
+                            </div>
+                            <p className="text-xs font-bold text-slate-700">{deal.stage_name}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                          <p className="text-[10px] text-slate-400 italic">Não está em nenhum funil</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 text-blue-700">
+                    <h4 className="text-xs font-bold uppercase mb-1 flex items-center gap-2">
+                      <TrendingUp size={14} />
+                      Última Atividade
+                    </h4>
+                    <p className="text-sm font-bold">
+                      {contactDetails.last_interaction ? new Date(contactDetails.last_interaction).toLocaleString() : 'Nunca interagiu'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Gerenciamento de Tags */}
+      {showTagManagerModal && contactDetails && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-fade-in">
+          <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+            <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between relative z-10">
+                <div className="flex items-center gap-3">
+                  <TagIcon className="text-white" size={20} />
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Gerenciar Tags</h2>
+                    <p className="text-[10px] text-white/80 font-medium">Organize por etiquetas personalizadas</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowTagManagerModal(false)}
+                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
+                >
+                  <X size={18} strokeWidth={2.5} />
+                </button>
+              </div>
+            </div>
+            <div className="p-5">
+              <TagManager
+                contactId={contactDetails.id}
+                contactName={contactDetails.name}
+                initialTags={contactDetails.tags || []}
+                onTagsChange={handleTagsUpdate}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Adicionar ao Pipeline */}
+      {showPipelineModal && contactDetails && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-fade-in">
+          <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+            <div className="bg-gradient-to-r from-green-600 to-emerald-500 p-5 relative overflow-hidden">
+              <div className="flex items-center justify-between relative z-10">
+                <div className="flex items-center gap-3">
+                  <Layers className="text-white" size={20} />
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Adicionar ao Pipeline</h2>
+                    <p className="text-[10px] text-white/80 font-medium">Mova o contato para um funil de vendas</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPipelineModal(false)}
+                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
+                >
+                  <X size={18} strokeWidth={2.5} />
+                </button>
+              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Pipeline</label>
+                <select
+                  value={selectedPipeline}
+                  onChange={(e) => {
+                    setSelectedPipeline(e.target.value);
+                    setSelectedStage('');
+                  }}
+                  className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-green-500 transition-all outline-none"
+                >
+                  <option value="">Escolha um funil...</option>
+                  {pipelines.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedPipeline && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Estágio</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {pipelines.find(p => p.id === parseInt(selectedPipeline))?.stages.map((stage: any) => (
+                      <button
+                        key={stage.id}
+                        type="button"
+                        onClick={() => setSelectedStage(stage.id)}
+                        className={`p-3 rounded-xl text-[10px] font-bold border-2 transition-all flex flex-col items-center gap-1 ${String(selectedStage) === String(stage.id)
+                            ? 'bg-green-50 border-green-500 shadow-sm'
+                            : 'bg-white border-slate-100 text-slate-500'
+                          }`}
+                      >
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }}></div>
+                        {stage.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleMoveToPipeline}
+                disabled={!selectedPipeline || !selectedStage}
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+              >
+                <Plus size={18} strokeWidth={3} />
+                Adicionar ao Pipeline
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

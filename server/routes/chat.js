@@ -101,6 +101,58 @@ router.get('/contacts-by-tag', async (req, res) => {
     }
 });
 
+// Nova rota: Buscar detalhes completos de um contato
+router.get('/contacts/:contactId', async (req, res) => {
+    try {
+        const { contactId } = req.params;
+        const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+        // Buscar contato com suas informações completas
+        const contactQuery = `
+            SELECT 
+                c.id,
+                c.name,
+                c.phone,
+                c.email,
+                c.tags,
+                c.last_interaction,
+                c.created_at,
+                (
+                    SELECT COALESCE(json_agg(
+                        json_build_object(
+                            'id', d.id,
+                            'title', d.title,
+                            'pipeline_id', d.pipeline_id,
+                            'pipeline_name', p.name,
+                            'stage_id', d.stage_id,
+                            'stage_name', ps.name,
+                            'stage_color', ps.color,
+                            'value', d.value,
+                            'status', d.status
+                        )
+                    ), '[]')
+                    FROM deals d
+                    LEFT JOIN pipelines p ON p.id = d.pipeline_id
+                    LEFT JOIN pipeline_stages ps ON ps.id = d.stage_id
+                    WHERE d.contact_id = c.id AND d.status = 'open'
+                ) as deals
+            FROM contacts c
+            WHERE c.id = $1 AND c.tenant_id = $2
+        `;
+
+        const result = await db.query(contactQuery, [contactId, tenantId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Contato não encontrado' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Erro ao buscar detalhes do contato:', err);
+        res.status(500).json({ error: 'Erro ao buscar detalhes do contato' });
+    }
+});
+
 // 2. Histórico de Mensagens de um Contato - COM FILTRO DE CANAL E PAGINAÇÃO
 router.get('/:contactId/messages', async (req, res) => {
     const { contactId } = req.params;
