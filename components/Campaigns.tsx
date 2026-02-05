@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Clock, Plus, LayoutTemplate, FileSpreadsheet, Calendar as CalendarIcon, X, Check, CheckCheck, ChevronRight, RefreshCw, Trash2, User, Phone, CheckCircle, AlertTriangle, Copy, Map as MapIcon, Pause, Play, Edit2, MessageCircle } from 'lucide-react';
+import { Send, Clock, Plus, LayoutTemplate, FileSpreadsheet, Calendar as CalendarIcon, X, Check, CheckCheck, ChevronRight, RefreshCw, Trash2, User, Phone, CheckCircle, AlertTriangle, Copy, Map as MapIcon, Pause, Play, Edit2, MessageCircle, AlertCircle } from 'lucide-react';
 import { Campaign, Template } from '../types';
 import Papa from 'papaparse';
 import { io } from 'socket.io-client';
@@ -605,44 +605,53 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
               )}
 
               {inputMode === 'manual' && (
-                <div className="bg-[#F8FAFC] p-4 rounded-2xl border border-slate-100 flex flex-col md:flex-row gap-3 items-end animate-fade-in group hover:border-indigo-100 hover:shadow-md transition-all">
-                  <div className="flex-1 space-y-1.5 w-full">
-                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Nome</label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-2.5 text-slate-300">
-                        <User size={14} />
+                <div className="flex flex-col gap-3 animate-fade-in group">
+                  <div className="bg-[#F8FAFC] p-4 rounded-2xl border border-slate-100 flex flex-col md:flex-row gap-3 items-end hover:border-indigo-100 hover:shadow-md transition-all">
+                    <div className="flex-1 space-y-1.5 w-full">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Nome</label>
+                      <div className="relative">
+                        <div className="absolute left-3 top-2.5 text-slate-300">
+                          <User size={14} />
+                        </div>
+                        <input
+                          value={manualName}
+                          onChange={e => setManualName(e.target.value)}
+                          className="w-full bg-white border-slate-100 focus:border-indigo-300 pl-9 p-2.5 rounded-xl text-xs font-bold outline-none transition-all shadow-sm focus:ring-0"
+                          placeholder="Nome do Cliente"
+                        />
                       </div>
-                      <input
-                        value={manualName}
-                        onChange={e => setManualName(e.target.value)}
-                        className="w-full bg-white border-slate-100 focus:border-indigo-300 pl-9 p-2.5 rounded-xl text-xs font-bold outline-none transition-all shadow-sm focus:ring-0"
-                        placeholder="Nome do Cliente"
-                      />
                     </div>
+
+                    <div className="flex-1 space-y-1.5 w-full">
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">WhatsApp</label>
+                      <div className="relative">
+                        <div className="absolute left-3 top-2.5 text-slate-300">
+                          <Phone size={14} />
+                        </div>
+                        <input
+                          value={manualPhone}
+                          onChange={e => setManualPhone(e.target.value)}
+                          className="w-full bg-white border-slate-100 focus:border-indigo-300 pl-9 p-2.5 rounded-xl text-xs font-bold outline-none transition-all shadow-sm focus:ring-0"
+                          placeholder="551188887777"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleAddManualContact}
+                      disabled={!manualPhone}
+                      className="bg-slate-900 hover:bg-indigo-600 disabled:opacity-50 disabled:bg-slate-300 text-white h-[38px] w-[38px] rounded-xl transition-all duration-300 shadow-lg shadow-slate-900/10 active:scale-95 flex items-center justify-center shrink-0"
+                    >
+                      <Plus size={18} strokeWidth={3} />
+                    </button>
                   </div>
 
-                  <div className="flex-1 space-y-1.5 w-full">
-                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">WhatsApp</label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-2.5 text-slate-300">
-                        <Phone size={14} />
-                      </div>
-                      <input
-                        value={manualPhone}
-                        onChange={e => setManualPhone(e.target.value)}
-                        className="w-full bg-white border-slate-100 focus:border-indigo-300 pl-9 p-2.5 rounded-xl text-xs font-bold outline-none transition-all shadow-sm focus:ring-0"
-                        placeholder="5511999999999"
-                      />
-                    </div>
+                  <div className="flex gap-2.5 p-3.5 bg-amber-50 rounded-2xl border border-amber-100/50">
+                    <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-amber-800 leading-relaxed font-medium">
+                      <span className="font-bold">Atenção ao Formato:</span> O número deve conter o Código do País (sem "+"), o DDD e apenas 8 dígitos (remova o "9" inicial, ex: 551188887777).
+                    </p>
                   </div>
-
-                  <button
-                    onClick={handleAddManualContact}
-                    disabled={!manualPhone}
-                    className="bg-slate-900 hover:bg-indigo-600 disabled:opacity-50 disabled:bg-slate-300 text-white h-[38px] w-[38px] rounded-xl transition-all duration-300 shadow-lg shadow-slate-900/10 active:scale-95 flex items-center justify-center shrink-0"
-                  >
-                    <Plus size={18} strokeWidth={3} />
-                  </button>
                 </div>
               )}
 
