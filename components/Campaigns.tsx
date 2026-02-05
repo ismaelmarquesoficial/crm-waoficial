@@ -395,7 +395,17 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
   };
 
   const handleSubmit = async () => {
-    if (!selectedTemplate || !selectedChannel || recipientsData.length === 0) return;
+    console.log('🚀 [Wizard] Iniciando envio da campanha...', {
+      hasTemplate: !!selectedTemplate,
+      hasChannel: !!selectedChannel,
+      recipientsCount: recipientsData.length
+    });
+
+    if (!selectedTemplate || !selectedChannel || recipientsData.length === 0) {
+      console.warn('⚠️ [Wizard] Submit bloqueado: dados incompletos.');
+      return;
+    }
+
     setIsSubmitting(true);
     const finalScheduledAt = scheduledAt ? new Date(scheduledAt).toISOString() : null;
 
@@ -414,6 +424,8 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
       recurrenceTime: recurrenceType !== 'none' ? recurrenceTime : null
     };
 
+    console.log('📦 [Wizard] Body da requisição:', body);
+
     try {
       const isEditing = initialData?.id && !initialData.name.startsWith('Cópia de');
       const url = isEditing
@@ -421,23 +433,34 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
         : 'http://localhost:3001/api/campaigns';
       const method = isEditing ? 'PATCH' : 'POST';
 
+      console.log(`🌐 [Wizard] Enviando ${method} para ${url}`);
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
         body: JSON.stringify(body)
       });
 
+      console.log('✅ [Wizard] Resposta status:', res.status);
+
       if (res.ok) {
         const d = await res.json();
+        console.log('🎉 [Wizard] Sucesso:', d);
         onSuccess();
         onShowSuccess(`Campanha ${isEditing ? 'atualizada' : (d.status === 'scheduled' ? 'agendada' : 'criada')}!`);
         onClose();
       }
       else {
         const err = await res.json();
-        alert(err.error);
+        console.error('❌ [Wizard] Erro da API:', err);
+        alert(err.error || 'Erro desconhecido ao salvar campanha');
       }
-    } catch (e: any) { alert(e.message); } finally { setIsSubmitting(false); }
+    } catch (e: any) {
+      console.error('🔥 [Wizard] Exceção:', e);
+      alert(e.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   const availableTemplates = useMemo(() => {
     if (!selectedChannel) return [];
@@ -892,79 +915,129 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
               </div>
             )}
 
-            <div className="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-              <div className="flex items-center gap-3 bg-[#F8FAFC] p-3 rounded-xl">
-                <div className="p-2 bg-white rounded-lg shadow-sm text-indigo-500">
-                  <CalendarIcon size={18} strokeWidth={2} />
-                </div>
-                <div className="flex-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Início do Disparo</label>
-                  <input
-                    type="datetime-local"
-                    value={scheduledAt}
-                    onChange={e => setScheduledAt(e.target.value)}
-                    className="bg-transparent w-full outline-none text-slate-700 font-bold text-xs font-mono"
-                  />
-                </div>
+            <div className="bg-white p-1 rounded-xl border border-slate-100 shadow-sm mb-4">
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-50 rounded-lg mb-3">
+                <button
+                  onClick={() => setScheduledAt('')}
+                  className={`text-[10px] font-bold uppercase py-2 rounded-md transition-all flex items-center justify-center gap-2 ${!scheduledAt ? 'bg-white text-emerald-600 shadow-sm border border-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <Send size={12} strokeWidth={2.5} /> Enviar Agora
+                </button>
+                <button
+                  onClick={() => {
+                    if (!scheduledAt) {
+                      const now = new Date();
+                      now.setMinutes(now.getMinutes() + 10); // Default to 10 min from now
+                      now.setSeconds(0);
+                      now.setMilliseconds(0);
+                      // Format to YYYY-MM-DDTHH:mm
+                      const tzOffset = now.getTimezoneOffset() * 60000;
+                      const localISOTime = (new Date(now.getTime() - tzOffset)).toISOString().slice(0, 16);
+                      setScheduledAt(localISOTime);
+                    }
+                  }}
+                  className={`text-[10px] font-bold uppercase py-2 rounded-md transition-all flex items-center justify-center gap-2 ${scheduledAt ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <CalendarIcon size={12} strokeWidth={2.5} /> Agendar
+                </button>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Recorrência</label>
-                <div className="flex bg-slate-50 p-1 rounded-lg">
-                  {(['none', 'daily', 'weekly', 'monthly'] as const).map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => setRecurrenceType(type)}
-                      className={`flex-1 py-1.5 rounded-md text-[9px] font-bold uppercase transition-all ${recurrenceType === type ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                    >
-                      {type === 'none' ? 'Único' : type === 'daily' ? 'Diário' : type === 'weekly' ? 'Semanal' : 'Mensal'}
-                    </button>
-                  ))}
-                </div>
-
-                {recurrenceType !== 'none' && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 p-2 bg-slate-50 rounded-xl border border-slate-100">
-                    <div>
-                      <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Intervalo</label>
-                      <div className="flex items-center gap-1 bg-white p-1.5 rounded-lg border border-slate-200">
-                        <input
-                          type="number"
-                          min="1"
-                          value={recurrenceInterval}
-                          onChange={e => setRecurrenceInterval(parseInt(e.target.value) || 1)}
-                          className="w-full text-xs font-bold text-slate-700 outline-none p-0 border-none h-4"
-                        />
-                        <span className="text-[8px] text-slate-400 uppercase">{recurrenceType === 'daily' ? 'dias' : 'sem'}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Horário</label>
+              {scheduledAt && (
+                <div className="grid grid-cols-2 gap-3 px-2 pb-2 animate-fade-in">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Data</label>
+                    <div className="relative group">
                       <input
-                        type="time"
-                        value={recurrenceTime}
-                        onChange={e => setRecurrenceTime(e.target.value)}
-                        className="w-full bg-white p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none h-[28px]"
-                        required={recurrenceType !== 'none'}
+                        type="date"
+                        value={scheduledAt.split('T')[0]}
+                        onChange={e => {
+                          const time = scheduledAt.split('T')[1] || '10:00';
+                          setScheduledAt(`${e.target.value}T${time}`);
+                        }}
+                        className="w-full bg-[#F8FAFC] border-none text-slate-700 font-bold text-xs p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer hover:bg-slate-100"
                       />
                     </div>
-                    {(recurrenceType === 'weekly' || recurrenceType === 'monthly') && (
-                      <div>
-                        <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Dia</label>
-                        <select
-                          value={recurrenceDay}
-                          onChange={e => setRecurrenceDay(e.target.value === '' ? '' : parseInt(e.target.value))}
-                          className="w-full bg-white p-1.5 rounded-lg border border-slate-200 text-[10px] font-bold text-slate-700 outline-none h-[28px]"
-                        >
-                          <option value="">{recurrenceType === 'weekly' ? 'Segunda' : 'Dia 1'}</option>
-                          {/* Simplified options for compactness */}
-                          <option value="1">Opção 1</option>
-                          <option value="2">Opção 2</option>
-                        </select>
-                      </div>
-                    )}
                   </div>
-                )}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Horário</label>
+                    <div className="relative group">
+                      <input
+                        type="time"
+                        value={scheduledAt.split('T')[1]}
+                        onChange={e => {
+                          const date = scheduledAt.split('T')[0];
+                          setScheduledAt(`${date}T${e.target.value}`);
+                        }}
+                        className="w-full bg-[#F8FAFC] border-none text-slate-700 font-bold text-xs p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer hover:bg-slate-100"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!scheduledAt && (
+                <div className="px-4 py-3 text-center animate-fade-in">
+                  <p className="text-[10px] text-slate-400 font-medium">Sua campanha será enviada <b className="text-emerald-500">imediatamente</b> após a finalização.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Recorrência</label>
+              <div className="flex bg-slate-50 p-1 rounded-lg">
+                {(['none', 'daily', 'weekly', 'monthly'] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setRecurrenceType(type)}
+                    className={`flex-1 py-1.5 rounded-md text-[9px] font-bold uppercase transition-all ${recurrenceType === type ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    {type === 'none' ? 'Único' : type === 'daily' ? 'Diário' : type === 'weekly' ? 'Semanal' : 'Mensal'}
+                  </button>
+                ))}
               </div>
+
+              {recurrenceType !== 'none' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 p-2 bg-slate-50 rounded-xl border border-slate-100">
+                  <div>
+                    <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Intervalo</label>
+                    <div className="flex items-center gap-1 bg-white p-1.5 rounded-lg border border-slate-200">
+                      <input
+                        type="number"
+                        min="1"
+                        value={recurrenceInterval}
+                        onChange={e => setRecurrenceInterval(parseInt(e.target.value) || 1)}
+                        className="w-full text-xs font-bold text-slate-700 outline-none p-0 border-none h-4"
+                      />
+                      <span className="text-[8px] text-slate-400 uppercase">{recurrenceType === 'daily' ? 'dias' : 'sem'}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Horário</label>
+                    <input
+                      type="time"
+                      value={recurrenceTime}
+                      onChange={e => setRecurrenceTime(e.target.value)}
+                      className="w-full bg-white p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 outline-none h-[28px]"
+                      required={recurrenceType !== 'none'}
+                    />
+                  </div>
+                  {(recurrenceType === 'weekly' || recurrenceType === 'monthly') && (
+                    <div>
+                      <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Dia</label>
+                      <select
+                        value={recurrenceDay}
+                        onChange={e => setRecurrenceDay(e.target.value === '' ? '' : parseInt(e.target.value))}
+                        className="w-full bg-white p-1.5 rounded-lg border border-slate-200 text-[10px] font-bold text-slate-700 outline-none h-[28px]"
+                      >
+                        <option value="">{recurrenceType === 'weekly' ? 'Segunda' : 'Dia 1'}</option>
+                        {/* Simplified options for compactness */}
+                        <option value="1">Opção 1</option>
+                        <option value="2">Opção 2</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {/* CRM Summary Review */}
             {crmTriggerRule !== 'none' && selectedPipelineId && (
@@ -1056,30 +1129,46 @@ const Campaigns: React.FC = () => {
         console.log('🔌 [FRONT] Init Socket for Tenant:', tenantId);
 
         if (!socket.connected) {
-          // console.log('🔌 [FRONT] Connecting...');
+          console.log('🔌 [SOCKET DEBUG] Iniciando conexão...');
           socket.connect();
         }
 
+        console.log(`🔌 [SOCKET DEBUG] Emitindo join_tenant para ID: ${tenantId}`);
         socket.emit('join_tenant', tenantId);
-        // console.log('🔌 [FRONT] Emit join_tenant');
 
         // 🟢 Real-Time Updates
         socket.on('campaign_progress', (data: any) => {
-          setSocketEventsCount(p => p + 1); // Incrementa
-          console.log('⚡ [FRONT] Received Progress:', data);
+          setSocketEventsCount(p => p + 1);
+          console.log('⚡ [SOCKET DEBUG] Progresso Recebido:', data);
+
           setCampaigns(prev => prev.map(c => {
             // Correção de Comparação ID
             if (String(c.id) === String(data.campaign_id)) {
               const isSent = data.status === 'sent';
               if (isSent) {
-                // Force increment
                 const oldSent = parseInt(c.sent as any) || 0;
-                const newSent = oldSent + 1;
-                return { ...c, sent: newSent };
+                return { ...c, sent: oldSent + 1 };
               }
             }
             return c;
           }));
+        });
+
+        socket.on('connect', () => {
+          console.log('✅ [SOCKET DEBUG] Conectado! ID:', socket.id);
+          setSocketStatus('connected');
+          // Re-emit join em reconexão
+          socket.emit('join_tenant', tenantId);
+        });
+
+        socket.on('disconnect', (reason) => {
+          console.warn('❌ [SOCKET DEBUG] Desconectado:', reason);
+          setSocketStatus('disconnected');
+        });
+
+        socket.on('connect_error', (err) => {
+          console.error('🔥 [SOCKET DEBUG] Erro de Conexão:', err.message);
+          setSocketStatus('error: ' + err.message);
         });
 
         socket.on('campaign_completed', (data: any) => {

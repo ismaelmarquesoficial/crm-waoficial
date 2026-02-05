@@ -76,6 +76,22 @@ const processBatch = async () => {
         const result = await db.query(query, [BATCH_SIZE_PER_TENANT]);
         const messages = result.rows;
 
+        // DEBUG DIAGNOSTICO SE NADA FOR ENCONTRADO
+        if (messages.length === 0) {
+            const debugCheck = await db.query("SELECT id, name, whatsapp_account_id, template_id FROM campaigns WHERE status = 'processing' LIMIT 1");
+            if (debugCheck.rows.length > 0) {
+                const c = debugCheck.rows[0];
+                // Verifica se tem items pendentes
+                const pending = await db.query("SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = $1 AND status = 'pending'", [c.id]);
+                // Verifica conta
+                const acc = await db.query("SELECT id FROM whatsapp_accounts WHERE id = $1", [c.whatsapp_account_id]);
+                // Verifica template
+                const tpl = await db.query("SELECT id FROM whatsapp_templates WHERE id = $1", [c.template_id]);
+
+                console.warn(`⚠️ [WORKER DIAGNOSTIC] Campanha travada (${c.id} - ${c.name}). Pendentes: ${pending.rows[0].count}. AccountValida: ${acc.rows.length > 0}. TemplateValido: ${tpl.rows.length > 0}`);
+            }
+        }
+
         // Log apenas se houver atividade para não poluir o terminal
         if (messages.length > 0) {
             console.log(`⚙️ [WORKER] Processando lote de ${messages.length} mensagens...`);
