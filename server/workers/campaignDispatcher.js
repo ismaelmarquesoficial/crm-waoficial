@@ -172,13 +172,28 @@ const processBatch = async () => {
                         [errorMsg, msg.id]
                     );
 
-                    // Notificar Falha
+                    // Notificar Falha com detalhes
                     if (ioInstance) {
+                        const errorDetails = error.response?.data?.error || {};
+                        const errorMessage = errorDetails.message || error.message;
+                        const errorCode = errorDetails.code;
+
+                        ioInstance.to(`tenant_${msg.tenant_id}`).emit('campaign_error', {
+                            campaign_id: msg.campaign_id,
+                            campaign_name: msg.campaign_name,
+                            template_name: msg.template_name,
+                            phone: msg.phone,
+                            error_message: errorMessage,
+                            error_code: errorCode,
+                            timestamp: new Date().toISOString()
+                        });
+
+                        // Também emitir progresso para atualizar contador
                         ioInstance.to(`tenant_${msg.tenant_id}`).emit('campaign_progress', {
                             campaign_id: msg.campaign_id,
                             status: 'failed',
                             phone: msg.phone,
-                            error: error.message
+                            error: errorMessage
                         });
                     }
                 }
@@ -203,16 +218,42 @@ const checkCompletedCampaigns = async () => {
         const pending = await db.query("SELECT 1 FROM campaign_recipients WHERE campaign_id = $1 AND status = 'pending' LIMIT 1", [camp.id]);
 
         if (pending.rows.length === 0) {
-            // Se não tem pendentes, marca como completed
-            await db.query("UPDATE campaigns SET status = 'completed' WHERE id = $1", [camp.id]);
+            // Check if there are any failed recipients
+            const failed = await db.query(
+                "SELECT COUNT(*) as count FROM campaign_recipients WHERE campaign_id = $1 AND status = 'failed'",
+                [camp.id]
+            );
+            const sent = await db.query(
+                "SELECT COUNT(*) as count FROM campaign_recipients WHERE campaign_id = $1 AND status = 'sent'",
+                [camp.id]
+            );
+
+            const failedCount = parseInt(failed.rows[0].count);
+            const sentCount = parseInt(sent.rows[0].count);
+            const totalCount = failedCount + sentCount;
+
+            let finalStatus = 'completed';
+            if (failedCount > 0 && sentCount === 0) {
+                // All failed
+                finalStatus = 'failed';
+            } else if (failedCount > 0) {
+                // Some failed, some sent
+                finalStatus = 'completed_with_errors';
+            }
+
+            // Se não tem pendentes, marca como completed/failed
+            await db.query("UPDATE campaigns SET status = $1 WHERE id = $2", [finalStatus, camp.id]);
 
             // Avisa o Frontend que acabou!
             if (ioInstance) {
                 ioInstance.to(`tenant_${camp.tenant_id}`).emit('campaign_completed', {
-                    campaign_id: camp.id
+                    campaign_id: camp.id,
+                    status: finalStatus,
+                    failed_count: failedCount,
+                    sent_count: sentCount
                 });
             }
-            console.log(`✅ Campanha ${camp.id} finalizada!`);
+            console.log(`✅ Campanha ${camp.id} finalizada com status: ${finalStatus} (${sentCount} enviadas, ${failedCount} falhas)`);
         }
     }
 };

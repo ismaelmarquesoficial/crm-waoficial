@@ -347,7 +347,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
       else { const err = await res.json(); alert(err.error); }
     } catch (e: any) { alert(e.message); } finally { setIsSubmitting(false); }
   };
-  const availableTemplates = templates.filter(t => t.account_id?.toString() === selectedChannel);
+  const availableTemplates = templates.filter(t => t.account_id?.toString() === selectedChannel && t.status === 'APPROVED');
 
   const selectedPipelineObj = pipelines.find(p => String(p.id) === selectedPipelineId);
 
@@ -662,6 +662,9 @@ const Campaigns: React.FC = () => {
   const [tenantIdDebug, setTenantIdDebug] = useState<string>('');
   const [socketEventsCount, setSocketEventsCount] = useState(0); // Contador de eventos
 
+  // Error notifications
+  const [errorNotifications, setErrorNotifications] = useState<any[]>([]);
+
   // DEBUG SOCKET
   useEffect(() => {
     const u = localStorage.getItem('user');
@@ -703,11 +706,23 @@ const Campaigns: React.FC = () => {
           console.log('🏁 [FRONT] Campaign Completed:', data);
           setCampaigns(prev => prev.map(c => {
             if (String(c.id) === String(data.campaign_id)) {
-              return { ...c, status: 'completed' };
+              return { ...c, status: data.status || 'completed' };
             }
             return c;
           }));
           fetchCampaigns();
+        });
+
+        // Listen for campaign errors
+        socket.on('campaign_error', (data: any) => {
+          console.log('❌ [FRONT] Campaign Error:', data);
+          const errorId = Date.now();
+          setErrorNotifications(prev => [...prev, { ...data, id: errorId }]);
+
+          // Auto-remove after 10 seconds
+          setTimeout(() => {
+            setErrorNotifications(prev => prev.filter(n => n.id !== errorId));
+          }, 10000);
         });
 
         socket.on('connect', () => { console.log('✅ [FRONT] Socket Connected!'); setSocketStatus('connected'); });
@@ -882,6 +897,43 @@ const Campaigns: React.FC = () => {
       {showSuccessPopup && <SuccessPopup message={successMessage} onClose={() => setShowSuccessPopup(false)} />}
       {showReschedule && <RescheduleModal onClose={() => setShowReschedule(false)} onConfirm={confirmReschedule} />}
       {previewTemplate && <TemplatePreviewModal template={previewTemplate} onClose={() => setPreviewTemplate(null)} />}
+
+      {/* Error Notifications */}
+      <div className="fixed bottom-4 right-4 z-50 space-y-2 max-w-md">
+        {errorNotifications.map((error) => (
+          <div
+            key={error.id}
+            className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg shadow-lg animate-slide-in-right"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="text-red-500 flex-shrink-0 mt-0.5" size={20} />
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-red-900 text-sm mb-1">
+                  Erro na Campanha: {error.campaign_name}
+                </h4>
+                <p className="text-xs text-red-700 mb-2">
+                  <strong>Template:</strong> {error.template_name}
+                </p>
+                <p className="text-xs text-red-600 break-words">
+                  {error.error_message}
+                </p>
+                {error.phone && (
+                  <p className="text-xs text-red-500 mt-1">
+                    <Phone size={10} className="inline mr-1" />
+                    {error.phone}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setErrorNotifications(prev => prev.filter(n => n.id !== error.id))}
+                className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
