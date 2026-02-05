@@ -545,22 +545,22 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
 
             {/* Left: Title & Views */}
             <div className="flex items-center gap-6">
-               <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                     <LayoutGrid size={20} />
+               <div className="flex items-center gap-4">
+                  <div className="p-3 bg-brand-gradient text-white rounded-2xl shadow-lg shadow-blue-500/20">
+                     <LayoutGrid size={24} className="stroke-[1.5]" />
                   </div>
                   <div>
-                     <h1 className="text-lg font-bold text-slate-800 leading-tight">Pipeline de Vendas</h1>
-                     <p className="text-xs text-slate-400 font-medium">Gerencie suas oportunidades</p>
+                     <h1 className="text-2xl font-bold text-slate-800 leading-tight tracking-tight">Pipeline de Vendas</h1>
+                     <p className="text-xs text-slate-400 font-medium mt-0.5">Gerencie suas oportunidades</p>
                   </div>
                </div>
                {activePipelineId && (
                   <button
                      onClick={() => handleDeletePipelineClick(activePipelineId)}
-                     className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                     className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                      title="Excluir pipeline atual"
                   >
-                     <Trash2 size={16} />
+                     <Trash2 size={18} className="stroke-[2]" />
                   </button>
                )}
             </div>
@@ -573,13 +573,13 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                      <button
                         key={p.id}
                         onClick={() => setActivePipelineId(p.id)}
-                        className={`px-5 py-2 rounded-xl text-xs font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${isActive
-                           ? 'bg-slate-800 text-white shadow-lg shadow-slate-200 scale-[1.02]'
-                           : 'text-slate-500 hover:bg-white hover:text-slate-700'
+                        className={`px-6 py-2.5 rounded-[14px] text-xs font-bold transition-all duration-300 whitespace-nowrap flex items-center gap-2 ${isActive
+                           ? 'bg-brand-gradient text-white shadow-lg shadow-blue-500/20 scale-[1.02] ring-1 ring-blue-500/20'
+                           : 'bg-white text-slate-500 hover:text-slate-700 hover:shadow-md border border-transparent hover:border-slate-100'
                            }`}
                      >
                         {p.name}
-                        {isActive && <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+                        {isActive && <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
                      </button>
                   );
                })}
@@ -661,9 +661,14 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                                                 style={{ ...provided.draggableProps.style }}
                                                 className={`bg-white rounded-[24px] overflow-hidden relative shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] border border-slate-200 hover:border-blue-300 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-300 cursor-pointer group ${snapshot.isDragging ? 'shadow-2xl ring-2 ring-blue-400 rotate-2 scale-105 z-50' : ''}`}
                                              >
-                                                {/* Gradient Top Decor */}
+                                                {/* Left Border Stage Indicator */}
                                                 <div
-                                                   className="h-1.5 w-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 absolute top-0 left-0 bg-gradient-to-r from-blue-500 via-purple-500 to-emerald-400"
+                                                   className="w-1.5 absolute top-0 bottom-0 left-0 transition-all duration-300"
+                                                   style={{ backgroundColor: stage.color || '#cbd5e1' }}
+                                                />
+                                                {/* Hover Top Gradient (Optional - kept for premium feel if desired, but user asked for side border) */}
+                                                <div
+                                                   className="h-1 w-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 absolute top-0 left-0 bg-gradient-to-r from-transparent via-white/50 to-transparent"
                                                 />
 
                                                 <div className="p-6">
