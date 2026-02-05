@@ -10,7 +10,8 @@ import {
   Search,
   ChevronDown,
   Menu,
-  X
+  X,
+  Users
 } from 'lucide-react';
 
 import Dashboard from './components/Dashboard';
@@ -18,10 +19,11 @@ import ChatInterface from './components/ChatInterface';
 import KanbanBoard from './components/KanbanBoard';
 import IntegrationScreen from './components/Integrations';
 import Campaigns from './components/Campaigns';
+import ContactsPage from './components/ContactsPage';
 import LoginScreen from './components/LoginScreen';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 
-type View = 'dashboard' | 'chat' | 'crm' | 'campaigns' | 'settings';
+type View = 'dashboard' | 'chat' | 'crm' | 'campaigns' | 'contacts' | 'settings';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -93,6 +95,7 @@ const App: React.FC = () => {
       case 'chat': return <ChatInterface initialContactId={chatContactId} />;
       case 'crm': return <KanbanBoard onNavigateToChat={handleNavigateToChat} />;
       case 'campaigns': return <Campaigns />;
+      case 'contacts': return <ContactsPage />;
       case 'settings': return <IntegrationScreen />;
       default: return <Dashboard />;
     }
@@ -190,6 +193,7 @@ const App: React.FC = () => {
               <NavItem view="dashboard" icon={LayoutDashboard} label="Visão Geral" />
               <NavItem view="crm" icon={Kanban} label="CRM Pipeline" />
               <NavItem view="chat" icon={MessageSquare} label="Chat & Atendimento" />
+              <NavItem view="contacts" icon={Users} label="Contatos" />
 
               {isSidebarExpanded && <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-8 animate-fade-in">Ferramentas</p>}
               {!isSidebarExpanded && <div className="h-8"></div>}
@@ -251,7 +255,15 @@ const App: React.FC = () => {
 
             <div className="flex flex-col justify-center">
               <h2 className="text-base md:text-lg font-bold text-slate-900 capitalize tracking-tight flex items-center gap-2">
-                {currentView === 'crm' ? 'Pipeline' : currentView === 'campaigns' ? 'Campanhas' : currentView.charAt(0).toUpperCase() + currentView.slice(1)}
+                {currentView === 'crm'
+                  ? 'Pipeline'
+                  : currentView === 'campaigns'
+                    ? 'Campanhas'
+                    : currentView === 'contacts'
+                      ? 'Contatos'
+                      : currentView === 'dashboard'
+                        ? 'Visão Geral'
+                        : currentView.charAt(0).toUpperCase() + currentView.slice(1)}
               </h2>
               <span className="text-[10px] md:text-xs text-slate-500 font-medium hidden sm:inline-block">
                 {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
