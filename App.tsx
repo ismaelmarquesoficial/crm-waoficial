@@ -37,6 +37,12 @@ const App: React.FC = () => {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(() => window.innerWidth > 768);
 
   const [companyName, setCompanyName] = useState('');
+  const [chatContactId, setChatContactId] = useState<string | null>(null);
+
+  const handleNavigateToChat = (contactId: string) => {
+    setChatContactId(contactId);
+    setCurrentView('chat');
+  };
 
   React.useEffect(() => {
     const handleResize = () => {
@@ -84,8 +90,8 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard': return <Dashboard />;
-      case 'chat': return <ChatInterface />;
-      case 'crm': return <KanbanBoard />;
+      case 'chat': return <ChatInterface initialContactId={chatContactId} />;
+      case 'crm': return <KanbanBoard onNavigateToChat={handleNavigateToChat} />;
       case 'campaigns': return <Campaigns />;
       case 'settings': return <IntegrationScreen />;
       default: return <Dashboard />;
@@ -103,8 +109,8 @@ const App: React.FC = () => {
         }}
         title={!isSidebarExpanded ? label : ''} // Tooltip for mini sidebar
         className={`w-full flex items-center gap-3.5 py-3 text-sm font-medium rounded-xl transition-all duration-300 group relative overflow-hidden ${isActive
-            ? 'text-meta shadow-sm bg-gradient-to-r from-indigo-50 to-white'
-            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+          ? 'text-meta shadow-sm bg-gradient-to-r from-indigo-50 to-white'
+          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
           } ${isSidebarExpanded ? 'px-4' : 'justify-center px-2'}`}
       >
         {isActive && (

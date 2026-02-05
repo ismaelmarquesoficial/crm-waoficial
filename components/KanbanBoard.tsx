@@ -21,7 +21,7 @@ import { io } from 'socket.io-client';
 
 
 
-const ContactDrawer = ({ contact, stages, onClose, onMoveStage }: { contact: any, stages: PipelineStage[], onClose: () => void, onMoveStage: (stageId: string) => void }) => {
+const ContactDrawer = ({ contact, stages, onClose, onMoveStage, onChat }: { contact: any, stages: PipelineStage[], onClose: () => void, onMoveStage: (stageId: string) => void, onChat?: () => void }) => {
    // Helpers para lidar com dados faltantes (visto que o banco ainda não tem tudo)
    const contactStage = stages.find(s => String(s.id) === String(contact.current_stage_id));
    const currentIdx = stages.findIndex(s => String(s.id) === String(contact.current_stage_id));
@@ -97,7 +97,10 @@ const ContactDrawer = ({ contact, stages, onClose, onMoveStage }: { contact: any
             </div>
 
             <div className="flex gap-2">
-               <button className="p-2.5 bg-slate-50 text-wa rounded-xl hover:bg-wa hover:text-white transition-colors border border-slate-100">
+               <button
+                  onClick={onChat}
+                  className="p-2.5 bg-slate-50 text-wa rounded-xl hover:bg-wa hover:text-white transition-colors border border-slate-100"
+               >
                   <MessageCircle size={20} />
                </button>
                <button className="p-2.5 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors border border-slate-100">
@@ -183,6 +186,7 @@ const ContactDrawer = ({ contact, stages, onClose, onMoveStage }: { contact: any
 interface Deal {
    id: number | string;
    current_stage_id: number | string;
+   contact_id: number | string;
    name: string;
    description?: string;
    value?: string;
@@ -190,13 +194,15 @@ interface Deal {
    company?: string;
    phone?: string;
    email?: string;
-   profile_pic_url?: string;
-   title?: string;
    created_at: string;
    [key: string]: any;
 }
 
-const KanbanBoard: React.FC = () => {
+interface KanbanBoardProps {
+   onNavigateToChat?: (contactId: string) => void;
+}
+
+const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
    const [pipelines, setPipelines] = useState<any[]>([]);
    const [activePipelineId, setActivePipelineId] = useState<number | null>(null);
    const [stages, setStages] = useState<PipelineStage[]>([]);
@@ -532,6 +538,11 @@ const KanbanBoard: React.FC = () => {
                   stages={stages}
                   onClose={() => setSelectedContact(null)}
                   onMoveStage={handleMoveDeal}
+                  onChat={() => {
+                     if (onNavigateToChat && selectedContact) {
+                        onNavigateToChat(String(selectedContact.contact_id));
+                     }
+                  }}
                />
             </div>
          )}

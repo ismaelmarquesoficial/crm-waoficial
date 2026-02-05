@@ -76,9 +76,13 @@ const AudioPlayer = ({ isUser }: { isUser: boolean }) => {
   );
 };
 
-const ChatInterface: React.FC = () => {
+interface ChatInterfaceProps {
+  initialContactId?: string | null;
+}
+
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   // 1. States
-  const [activeContactId, setActiveContactId] = useState<string | null>(null);
+  const [activeContactId, setActiveContactId] = useState<string | null>(initialContactId || null);
   const [inputText, setInputText] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -217,6 +221,12 @@ const ChatInterface: React.FC = () => {
 
   // 4. Effects
   useEffect(() => {
+    if (initialContactId) {
+      setActiveContactId(initialContactId);
+    }
+  }, [initialContactId]);
+
+  useEffect(() => {
     fetchChannels();
   }, [fetchChannels]);
 
@@ -261,7 +271,39 @@ const ChatInterface: React.FC = () => {
     }
   }, [activeContactId, fetchMessages]);
 
-  const activeContact = contacts.find(c => c.id === activeContactId);
+  // Helper logic to get the derived active contact object
+  // If it's not in the 'contacts' list (e.g. came from CRM deep link but not in recent chats), we might need to handle it.
+  const activeContact = contacts.find(c => String(c.id) === String(activeContactId));
+
+  useEffect(() => {
+    // Optimization: If activeContactId is set but not in 'contacts', fetch it specifically
+    if (activeContactId && !activeContact) {
+      const token = localStorage.getItem('token');
+      fetch(`http://localhost:3001/api/contacts/${activeContactId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.id) {
+            const newContact: Contact = {
+              id: data.id,
+              name: data.name || data.phone,
+              phone: data.phone,
+              avatar: data.profile_pic_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || data.phone)}&background=random`,
+              pipelineStage: '',
+              lastMessage: '',
+              lastMessageTime: '',
+              unreadCount: 0,
+              tags: []
+            };
+            // Add to contacts list temporarily so UI renders
+            setContacts(prev => [newContact, ...prev]);
+          }
+        })
+        .catch(err => console.error('Error fetching deep linked contact', err));
+    }
+  }, [activeContactId, activeContact]);
+
 
   // Helper to get dropdown label
   const getSelectedChannelLabel = () => {
