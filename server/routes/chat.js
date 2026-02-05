@@ -67,6 +67,40 @@ router.get('/', async (req, res) => {
     }
 });
 
+// Nova rota: Listar todas as tags únicas do Tenant
+router.get('/tags', async (req, res) => {
+    try {
+        const tenantId = req.tenantId || (req.user && req.user.tenantId);
+        const result = await db.query(
+            "SELECT DISTINCT unnest(tags) as tag FROM contacts WHERE tenant_id = $1 AND tags IS NOT NULL AND array_length(tags, 1) > 0 ORDER BY tag",
+            [tenantId]
+        );
+        res.json(result.rows.map(r => r.tag));
+    } catch (err) {
+        console.error('Erro ao listar tags:', err);
+        res.status(500).json({ error: 'Erro ao listar tags' });
+    }
+});
+
+// Nova rota: Buscar contatos por tag
+router.get('/contacts-by-tag', async (req, res) => {
+    try {
+        const { tag } = req.query;
+        const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+        if (!tag) return res.status(400).json({ error: 'Tag é obrigatória' });
+
+        const result = await db.query(
+            "SELECT id, name, phone, email, tags FROM contacts WHERE tenant_id = $1 AND $2 = ANY(tags) ORDER BY name",
+            [tenantId, tag]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Erro ao buscar contatos por tag:', err);
+        res.status(500).json({ error: 'Erro ao buscar contatos por tag' });
+    }
+});
+
 // 2. Histórico de Mensagens de um Contato - COM FILTRO DE CANAL E PAGINAÇÃO
 router.get('/:contactId/messages', async (req, res) => {
     const { contactId } = req.params;

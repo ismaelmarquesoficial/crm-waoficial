@@ -65,6 +65,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     const [selectedStageId, setSelectedStageId] = useState<string>('');
     const [isSavingDeal, setIsSavingDeal] = useState(false);
     const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+    const [allTagsSystem, setAllTagsSystem] = useState<string[]>([]);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     // Auto-hide notification
@@ -81,7 +82,22 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     useEffect(() => {
         fetchContacts();
         fetchPipelines();
+        fetchAllTags();
     }, []);
+
+    const fetchAllTags = async () => {
+        try {
+            const response = await fetch('/api/chat/tags', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setAllTagsSystem(data);
+            }
+        } catch (err) {
+            console.error('Erro ao carregar tags:', err);
+        }
+    };
 
     const fetchPipelines = async () => {
         try {
@@ -527,27 +543,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
 
                                             {/* Tags Badge */}
                                             <td className="px-5 py-3">
-                                                <div className="flex flex-wrap gap-1 max-w-[180px]">
-                                                    {contact.tags && contact.tags.length > 0 ? (
-                                                        <>
-                                                            {contact.tags.slice(0, 2).map(tag => (
-                                                                <span key={tag} className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded text-[10px] font-bold border border-purple-100">
-                                                                    {tag}
-                                                                </span>
-                                                            ))}
-                                                            {contact.tags.length > 2 && (
-                                                                <span
-                                                                    className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold border border-slate-200 cursor-help"
-                                                                    title={contact.tags.slice(2).join(', ')}
-                                                                >
-                                                                    +{contact.tags.length - 2}
-                                                                </span>
-                                                            )}
-                                                        </>
-                                                    ) : (
-                                                        <span className="text-[10px] text-slate-300 italic">Sem tags</span>
-                                                    )}
-                                                </div>
+                                                <TagBadge tags={contact.tags} maxVisible={2} />
                                             </td>
 
                                             {/* Pipelines Info */}
@@ -656,6 +652,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                     contactId={selectedContact.id}
                                     contactName={selectedContact.name}
                                     initialTags={selectedContact.tags}
+                                    allAvailableTags={allTagsSystem}
                                     onTagsChange={handleTagsChange}
                                 />
                             </div>
@@ -1065,7 +1062,11 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                             onChange={(e) => setImportTag(e.target.value)}
                                             className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                                             placeholder="Ex: Lead_Maio"
+                                            list="import-tags-list"
                                         />
+                                        <datalist id="import-tags-list">
+                                            {allTagsSystem.map(t => <option key={t} value={t} />)}
+                                        </datalist>
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Mover para Funil (Opcional)</label>

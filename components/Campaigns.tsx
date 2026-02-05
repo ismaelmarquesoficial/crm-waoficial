@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Clock, Plus, LayoutTemplate, FileSpreadsheet, Calendar as CalendarIcon, X, Check, CheckCheck, ChevronRight, RefreshCw, Trash2, User, Phone, CheckCircle, AlertTriangle, Copy, Map as MapIcon, Pause, Play, Edit2, MessageCircle, AlertCircle } from 'lucide-react';
+import { Send, Clock, Plus, LayoutTemplate, FileSpreadsheet, Calendar as CalendarIcon, X, Check, CheckCheck, ChevronRight, RefreshCw, Trash2, User, Phone, CheckCircle, AlertTriangle, Copy, Map as MapIcon, Pause, Play, Edit2, MessageCircle, AlertCircle, Tag as TagIcon } from 'lucide-react';
 import { Campaign, Template } from '../types';
 import Papa from 'papaparse';
 import { io } from 'socket.io-client';
@@ -183,7 +183,10 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
 
   // CSV & Data States
-  const [inputMode, setInputMode] = useState<'csv' | 'manual'>('csv');
+  const [inputMode, setInputMode] = useState<'csv' | 'manual' | 'tag'>('csv');
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [selectedTag, setSelectedTag] = useState<string>('');
+  const [isLoadingTags, setIsLoadingTags] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvColumns, setCsvColumns] = useState<string[]>([]);
   const [rawCsvData, setRawCsvData] = useState<any[]>([]);
@@ -244,6 +247,65 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
       if (initialData.crmStageId) setSelectedStageId(String(initialData.crmStageId));
     }
   }, [initialData, pipelines]);
+
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Carregar Tags ao mudar para o modo Tag
+  useEffect(() => {
+    if (inputMode === 'tag' && availableTags.length === 0) {
+      loadAvailableTags();
+    }
+  }, [inputMode]);
+
+  const loadAvailableTags = async () => {
+    const token = localStorage.getItem('token');
+    setIsLoadingTags(true);
+    try {
+      const res = await fetch('/api/chat/tags', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableTags(data);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar tags:', err);
+    } finally {
+      setIsLoadingTags(false);
+    }
+  };
+
+  const handleAddContactsByTag = async () => {
+    if (!selectedTag) return;
+    const token = localStorage.getItem('token');
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/chat/contacts-by-tag?tag=${encodeURIComponent(selectedTag)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const contacts = await res.json();
+        const newRecipients = contacts.map((c: any) => ({
+          name: c.name,
+          phone: c.phone,
+          variables: [c.name] // Default to name as first variable
+        }));
+
+        // Merging without duplicates
+        setRecipientsData(prev => {
+          const existingPhones = new Set(prev.map(p => p.phone));
+          const filteredNew = newRecipients.filter((r: any) => !existingPhones.has(r.phone));
+          return [...prev, ...filteredNew];
+        });
+
+        onShowSuccess(`${newRecipients.length} contatos encontrados com a tag "${selectedTag}".`);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar contatos por tag:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (channels.length > 0 && !selectedChannel) setSelectedChannel(channels[0].id.toString());
@@ -566,6 +628,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Destinatários</label>
                 <div className="flex gap-1.5 bg-slate-200/40 p-1 rounded-xl w-max border border-slate-200/20">
                   <button onClick={() => setInputMode('csv')} className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${inputMode === 'csv' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>CSV</button>
+                  <button onClick={() => setInputMode('tag')} className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${inputMode === 'tag' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Tags</button>
                   <button onClick={() => setInputMode('manual')} className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${inputMode === 'manual' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Manual</button>
                 </div>
               </div>
@@ -601,6 +664,37 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {inputMode === 'tag' && (
+                <div className="bg-[#F8FAFC] p-4 rounded-2xl border border-slate-100 flex flex-col md:flex-row gap-3 items-end animate-fade-in group hover:border-indigo-100 hover:shadow-md transition-all">
+                  <div className="flex-1 space-y-1.5 w-full">
+                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Selecionar Tag</label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-2.5 text-slate-300">
+                        <TagIcon size={14} />
+                      </div>
+                      <select
+                        value={selectedTag}
+                        onChange={e => setSelectedTag(e.target.value)}
+                        className="w-full bg-white border-slate-100 focus:border-indigo-300 pl-9 p-2.5 rounded-xl text-xs font-bold outline-none transition-all shadow-sm focus:ring-0 cursor-pointer"
+                        disabled={isLoadingTags}
+                      >
+                        <option value="">{isLoadingTags ? 'Carregando tags...' : 'Escolha uma tag...'}</option>
+                        {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleAddContactsByTag}
+                    disabled={!selectedTag || isLoading}
+                    className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:bg-slate-300 text-white h-[38px] px-4 rounded-xl transition-all duration-300 shadow-lg shadow-indigo-600/10 active:scale-95 flex items-center justify-center gap-2 text-xs font-bold"
+                  >
+                    {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} strokeWidth={3} />}
+                    Adicionar
+                  </button>
                 </div>
               )}
 

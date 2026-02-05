@@ -5,6 +5,7 @@ interface TagManagerProps {
     contactId: string;
     contactName: string;
     initialTags: string[];
+    allAvailableTags?: string[];
     onTagsChange?: (tags: string[]) => void;
 }
 
@@ -12,6 +13,7 @@ const TagManager: React.FC<TagManagerProps> = ({
     contactId,
     contactName,
     initialTags,
+    allAvailableTags = [],
     onTagsChange
 }) => {
     const [tags, setTags] = useState<string[]>(initialTags || []);
@@ -26,7 +28,7 @@ const TagManager: React.FC<TagManagerProps> = ({
 
         setLoading(true);
         try {
-            const response = await fetch(`http://localhost:3001/api/chat/contacts/${contactId}/tags`, {
+            const response = await fetch(`/api/chat/contacts/${contactId}/tags`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -54,7 +56,7 @@ const TagManager: React.FC<TagManagerProps> = ({
         setLoading(true);
         try {
             const response = await fetch(
-                `http://localhost:3001/api/chat/contacts/${contactId}/tags/${encodeURIComponent(tag)}`,
+                `/api/chat/contacts/${contactId}/tags/${encodeURIComponent(tag)}`,
                 {
                     method: 'DELETE',
                     headers: {
@@ -151,7 +153,11 @@ const TagManager: React.FC<TagManagerProps> = ({
                         className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         autoFocus
                         disabled={loading}
+                        list="available-tags-list"
                     />
+                    <datalist id="available-tags-list">
+                        {allAvailableTags.map(t => <option key={t} value={t} />)}
+                    </datalist>
                     <button
                         onClick={addTag}
                         disabled={loading || !newTag.trim()}

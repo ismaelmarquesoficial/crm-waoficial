@@ -15,12 +15,12 @@ const TagBadge: React.FC<TagBadgeProps> = ({ tags = [], maxVisible = 2, size = '
 
     const getTagColor = (tag: string) => {
         const colors = [
-            'bg-blue-100 text-blue-700',
-            'bg-green-100 text-green-700',
-            'bg-yellow-100 text-yellow-700',
-            'bg-indigo-100 text-indigo-700',
-            'bg-red-100 text-red-700',
-            'bg-teal-100 text-teal-700',
+            'bg-blue-100 text-blue-700 border-blue-200',
+            'bg-green-100 text-green-700 border-green-200',
+            'bg-yellow-100 text-yellow-700 border-yellow-200',
+            'bg-indigo-100 text-indigo-700 border-indigo-200',
+            'bg-red-100 text-red-700 border-red-200',
+            'bg-teal-100 text-teal-700 border-teal-200',
         ];
 
         const hash = tag.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -37,7 +37,7 @@ const TagBadge: React.FC<TagBadgeProps> = ({ tags = [], maxVisible = 2, size = '
             {visibleTags.map((tag, index) => (
                 <span
                     key={index}
-                    className={`inline-flex items-center gap-1 rounded-full font-semibold ${getTagColor(tag)} ${sizeClasses[size]}`}
+                    className={`inline-flex items-center gap-1 rounded-full font-semibold border ${getTagColor(tag)} ${sizeClasses[size]}`}
                     title={tag}
                 >
                     {size === 'md' && <TagIcon size={10} strokeWidth={3} />}

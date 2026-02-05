@@ -21,8 +21,11 @@ import {
   Wifi,
   WifiOff,
   Smile,
-  ArrowLeft
+  ArrowLeft,
+  X,
+  Tag as TagIcon
 } from 'lucide-react';
+import TagBadge from './TagBadge';
 import { Contact, Message, MessageType } from '../types';
 
 // Inject custom animations
@@ -125,7 +128,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const fetchChannels = useCallback(async () => {
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch('http://localhost:3001/api/channels', {
+      const res = await fetch('/api/channels', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -519,7 +522,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                   <p className={`text-xs truncate flex items-center gap-1 ${isActive ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
                     {contact.lastMessage}
                   </p>
-                  {/* Tags or Pipeline Stage could go here */}
+                  <div className="mt-1">
+                    <TagBadge tags={contact.tags} maxVisible={1} />
+                  </div>
                 </div>
               </div>
             )
@@ -565,6 +570,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       <span className="text-[10px] md:text-xs text-blue-500 font-medium bg-blue-50 px-1.5 rounded truncate max-w-[150px]">{activeContact.email}</span>
                     )}
                     <span className="hidden md:inline text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Lead</span>
+                    <TagBadge tags={activeContact.tags} maxVisible={3} size="sm" />
                   </div>
                 </div>
               </div>
