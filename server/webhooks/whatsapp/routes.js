@@ -176,7 +176,7 @@ router.route('/') // O prefixo /api/webhooks/whatsapp já está no index.js
                     const contactName = contactInfo?.profile?.name || contactPhone;
 
                     const contactId = await WhatsAppService.findOrCreateContact(tenantId, contactPhone, contactName);
-                    const savedMessage = await WhatsAppService.saveMessage(tenantId, contactId, accountId, message);
+                    const savedMessage = await WhatsAppService.saveMessage(tenantId, contactId, accountId, message, io);
 
                     console.log(`✅ Mensagem salva no banco! ID: ${savedMessage.id}`);
 

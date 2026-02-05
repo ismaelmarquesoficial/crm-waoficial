@@ -34,7 +34,7 @@ const WhatsAppService = {
     },
 
     // 2. Salvar Mensagem no Log
-    async saveMessage(tenantId, contactId, accountId, messageData) {
+    async saveMessage(tenantId, contactId, accountId, messageData, io) {
         // Extrair dados da mensagem da Meta
         const wamid = messageData.id;
         const type = messageData.type;
@@ -65,13 +65,13 @@ const WhatsAppService = {
         );
 
         // 3. Verificar Gatilhos de Campanha (On Reply)
-        await WhatsAppService.checkCampaignReply(tenantId, contactId, body);
+        await WhatsAppService.checkCampaignReply(tenantId, contactId, body, io);
 
         return insert.rows[0];
     },
 
     // 3. Lógica de Atribuição de Campanha
-    async checkCampaignReply(tenantId, contactId, messageBody) {
+    async checkCampaignReply(tenantId, contactId, messageBody, io) {
         try {
             // Busca a campanha mais recente enviada para este contato que tenha regra 'on_reply'
             // Limitamos a campanhas de até 7 dias atrás para relevância
@@ -104,12 +104,23 @@ const WhatsAppService = {
             if (exists.rows.length > 0) return; // Deal já criado
 
             // CRIA O DEAL
-            await db.query(`
+            const newDeal = await db.query(`
                 INSERT INTO deals (tenant_id, contact_id, pipeline_id, stage_id, title, status, created_at, updated_at)
                 VALUES ($1, $2, $3, $4, $5, 'open', NOW(), NOW())
+                RETURNING *
             `, [tenantId, contactId, camp.crm_pipeline_id, camp.crm_stage_id, `Resposta: ${camp.name}`]);
 
             console.log(`🎯 [CRM] Deal 'on_reply' criado para Contato ${contactId} na campanha ${camp.name}`);
+
+            // 🚀 Socket Emit: Deal Created
+            if (io) {
+                io.to(`tenant_${tenantId}`).emit('crm_deal_update', {
+                    type: 'created',
+                    deal: newDeal.rows[0],
+                    pipelineId: camp.crm_pipeline_id
+                });
+                console.log(`📡 Socket 'crm_deal_update' emitido para pipeline ${camp.crm_pipeline_id}`);
+            }
 
         } catch (e) {
             console.error('Erro ao processar checkCampaignReply:', e);

@@ -137,4 +137,54 @@ router.post('/pipelines', verifyToken, async (req, res) => {
     }
 });
 
+// Atualizar Deal (Mover de Etapa)
+router.put('/deals/:id', verifyToken, async (req, res) => {
+    const { id } = req.params;
+    const { stage_id, status, value, title } = req.body;
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+    try {
+        // Verifica se o deal existe e pertence ao tenant
+        const check = await db.query('SELECT id FROM deals WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+        if (check.rows.length === 0) return res.status(404).json({ error: 'Deal não encontrado' });
+
+        // Monta query dinâmica
+        const updates = [];
+        const values = [];
+        let idx = 1;
+
+        if (stage_id !== undefined) { updates.push(`stage_id = $${idx++}`); values.push(stage_id); }
+        if (status !== undefined) { updates.push(`status = $${idx++}`); values.push(status); }
+        if (value !== undefined) { updates.push(`value = $${idx++}`); values.push(value); }
+        if (title !== undefined) { updates.push(`title = $${idx++}`); values.push(title); }
+
+        updates.push(`updated_at = NOW()`);
+
+        if (updates.length > 1) { // >1 porque updated_at sempre está lá
+            values.push(id);
+            const query = `UPDATE deals SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
+            const result = await db.query(query, values);
+
+            // Emitir evento socket se possível (idealmente)
+            const io = req.app.get('io');
+            if (io) {
+                // Pequeno hack: emitir update genérico ou específico
+                io.to(`tenant_${tenantId}`).emit('crm_deal_update', {
+                    type: 'updated',
+                    deal: result.rows[0],
+                    pipelineId: result.rows[0].pipeline_id
+                });
+            }
+
+            res.json(result.rows[0]);
+        } else {
+            res.json({ message: 'Nada a atualizar' });
+        }
+
+    } catch (err) {
+        console.error('Erro ao atualizar deal:', err);
+        res.status(500).json({ error: 'Erro ao atualizar deal' });
+    }
+});
+
 module.exports = router;
