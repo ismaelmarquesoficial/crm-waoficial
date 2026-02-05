@@ -609,13 +609,13 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
          {/* Board Content */}
          <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex-1 overflow-x-auto overflow-y-hidden p-8 bg-slate-50">
-               <div className="flex h-full gap-8 min-w-max pb-4">
+               <div className="flex h-full gap-5 min-w-max pb-4">
                   {stages.map(stage => {
                      const stageCards = cards.filter(c => String(c.current_stage_id) === String(stage.id));
                      const stageValue = getTotalValue(stage.id as string);
 
                      return (
-                        <div key={stage.id} className="w-80 flex flex-col h-full group/col">
+                        <div key={stage.id} className="w-72 flex flex-col h-full group/col">
                            {/* Column Header */}
                            <div className="flex flex-col mb-6 px-1">
                               <div className="flex justify-between items-center mb-4">
@@ -671,22 +671,22 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                                                    className="h-1 w-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 absolute top-0 left-0 bg-gradient-to-r from-transparent via-white/50 to-transparent"
                                                 />
 
-                                                <div className="p-6">
-                                                   <div className="flex justify-between items-start mb-4">
-                                                      <div className="flex items-center gap-4">
-                                                         <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-500 font-bold text-sm border border-slate-100 shadow-inner group-hover:scale-105 transition-transform">
-                                                            {card.profile_pic_url ? <img src={card.profile_pic_url} className="w-full h-full rounded-2xl object-cover" /> : (card.name?.[0] || '?')}
+                                                <div className="p-5">
+                                                   <div className="flex justify-between items-start mb-3">
+                                                      <div className="flex items-center gap-3">
+                                                         <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-500 font-bold text-xs border border-slate-100 shadow-inner group-hover:scale-105 transition-transform">
+                                                            {card.profile_pic_url ? <img src={card.profile_pic_url} className="w-full h-full rounded-xl object-cover" /> : (card.name?.[0] || '?')}
                                                          </div>
                                                          <div>
-                                                            <h4 className="font-bold text-slate-800 text-base leading-tight group-hover:text-blue-600 transition-colors">{card.name}</h4>
-                                                            <p className="text-[11px] uppercase font-bold text-slate-400 mt-1 tracking-wider">{card.title || 'Oportunidade'}</p>
+                                                            <h4 className="font-bold text-slate-800 text-sm leading-tight group-hover:text-blue-600 transition-colors">{card.name}</h4>
+                                                            <p className="text-[10px] uppercase font-bold text-slate-400 mt-1 tracking-wider">{card.title || 'Oportunidade'}</p>
                                                          </div>
                                                       </div>
                                                    </div>
 
-                                                   <div className="flex items-center gap-3 mt-5 pt-4 border-t border-slate-50">
-                                                      <div className="flex items-center gap-1.5 text-slate-600 font-bold text-xs bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 group-hover:border-blue-100 group-hover:bg-blue-50/30 transition-colors">
-                                                         <DollarSign size={14} className="text-slate-400 stroke-[2]" />
+                                                   <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-50">
+                                                      <div className="flex items-center gap-1.5 text-slate-600 font-bold text-[11px] bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 group-hover:border-blue-100 group-hover:bg-blue-50/30 transition-colors">
+                                                         <DollarSign size={12} className="text-slate-400 stroke-[2]" />
                                                          {card.value ? parseFloat(card.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ -'}
                                                       </div>
                                                       <div className="flex-1 text-right">
@@ -722,7 +722,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                   })}
 
                   {/* Add New Stage Column */}
-                  <div className="w-80 flex flex-col h-full flex-shrink-0">
+                  <div className="w-72 flex flex-col h-full flex-shrink-0">
                      <div className="flex flex-col mb-5 px-1 opacity-0 pointer-events-none">
                         <div className="flex justify-between items-center mb-3">
                            <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">Ghost</h3>
