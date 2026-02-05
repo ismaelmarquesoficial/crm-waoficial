@@ -106,13 +106,18 @@ router.post('/pipelines', verifyToken, async (req, res) => {
         );
         const pipelineId = pipeRes.rows[0].id;
 
-        // 2. Criar Etapas Padrão
-        const stages = [
+        // 2. Criar Etapas (Se vier customizado, usa. Se não, usa padrão)
+        const customStages = req.body.stages;
+        const defaultStages = [
             { name: 'Disparado', color: '#3B82F6' }, // Blue
             { name: 'Respondeu', color: '#EAB308' }, // Yellow
             { name: 'Negociando', color: '#F97316' }, // Orange
             { name: 'Vendeu', color: '#22C55E' }     // Green
         ];
+
+        const stages = (customStages && Array.isArray(customStages) && customStages.length > 0)
+            ? customStages
+            : defaultStages;
 
         const createdStages = [];
         for (let i = 0; i < stages.length; i++) {
@@ -132,6 +137,47 @@ router.post('/pipelines', verifyToken, async (req, res) => {
         await client.query('ROLLBACK');
         console.error(err);
         res.status(500).json({ error: 'Erro ao criar pipeline.' });
+    } finally {
+        client.release();
+    }
+});
+
+// Adicionar Estágio a um Pipeline Existente
+router.post('/pipelines/:id/stages', verifyToken, async (req, res) => {
+    const { id } = req.params;
+    const { name, color } = req.body;
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+    if (!name) return res.status(400).json({ error: 'Nome do estágio é obrigatório.' });
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Verificar se pipeline existe
+        const pipeCheck = await client.query('SELECT id FROM pipelines WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+        if (pipeCheck.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Pipeline não encontrado' });
+        }
+
+        // Pegar o maior index atual
+        const maxIdxRes = await client.query('SELECT MAX(order_index) as max_idx FROM pipeline_stages WHERE pipeline_id = $1', [id]);
+        const nextIdx = (maxIdxRes.rows[0].max_idx !== null) ? maxIdxRes.rows[0].max_idx + 1 : 0;
+
+        // Criar estágio
+        const newStage = await client.query(
+            "INSERT INTO pipeline_stages (pipeline_id, name, order_index, color) VALUES ($1, $2, $3, $4) RETURNING *",
+            [id, name, nextIdx, color || '#cbd5e1']
+        );
+
+        await client.query('COMMIT');
+        res.status(201).json(newStage.rows[0]);
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Erro ao adicionar estágio:', err);
+        res.status(500).json({ error: 'Erro ao adicionar estágio.' });
     } finally {
         client.release();
     }

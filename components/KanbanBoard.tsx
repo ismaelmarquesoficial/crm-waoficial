@@ -15,7 +15,8 @@ import {
    LayoutGrid,
    List,
    Trash2,
-   AlertTriangle
+   AlertTriangle,
+   Minus
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Contact, PipelineStage } from '../types';
@@ -220,6 +221,11 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
 
    // New Pipeline Form
    const [newPipelineName, setNewPipelineName] = useState('');
+   const [newPipelineStages, setNewPipelineStages] = useState<{ name: string, color: string }[]>([
+      { name: 'Novo Lead', color: '#3B82F6' },
+      { name: 'Em Andamento', color: '#F97316' },
+      { name: 'Fechado', color: '#22C55E' }
+   ]);
 
    // New Deal Form
    const [newDealData, setNewDealData] = useState({
@@ -228,6 +234,10 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
       value: '',
       stage_id: ''
    });
+
+   // New Stage (In-Board)
+   const [isAddingStage, setIsAddingStage] = useState(false);
+   const [newStageName, setNewStageName] = useState('');
 
    // Load Pipelines
    useEffect(() => {
@@ -399,7 +409,10 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
          const res = await fetch('http://localhost:3001/api/crm/pipelines', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ name: newPipelineName })
+            body: JSON.stringify({
+               name: newPipelineName,
+               stages: newPipelineStages.filter(s => s.name.trim() !== '')
+            })
          });
          const data = await res.json();
          if (res.ok) {
@@ -452,6 +465,30 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
       } catch (err) {
          console.error(err);
          alert('Erro ao criar deal');
+      }
+   };
+
+   const handleAddStage = async () => {
+      if (!newStageName.trim() || !activePipelineId) return;
+
+      try {
+         const token = localStorage.getItem('token');
+         const res = await fetch(`http://localhost:3001/api/crm/pipelines/${activePipelineId}/stages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ name: newStageName, color: '#64748b' })
+         });
+         const data = await res.json();
+         if (res.ok) {
+            setStages([...stages, data]);
+            setNewStageName('');
+            setIsAddingStage(false);
+         } else {
+            alert(data.error || 'Erro ao criar estágio');
+         }
+      } catch (err) {
+         console.error(err);
+         alert('Erro ao criar estágio');
       }
    };
 
@@ -671,6 +708,56 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                         </div>
                      );
                   })}
+
+                  {/* Add New Stage Column */}
+                  <div className="w-80 flex flex-col h-full flex-shrink-0">
+                     <div className="flex flex-col mb-5 px-1 opacity-0 pointer-events-none">
+                        <div className="flex justify-between items-center mb-3">
+                           <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">Ghost</h3>
+                        </div>
+                        <div className="h-1 w-full bg-slate-200/50 rounded-full"></div>
+                     </div>
+
+                     {!isAddingStage ? (
+                        <button
+                           onClick={() => setIsAddingStage(true)}
+                           className="flex-1 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:text-blue-500 hover:border-blue-300 hover:bg-blue-50/30 transition-all gap-3 group"
+                        >
+                           <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                              <Plus size={24} />
+                           </div>
+                           <span className="font-bold text-sm">Adicionar Etapa</span>
+                        </button>
+                     ) : (
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xl animate-scale-in">
+                           <h3 className="font-bold text-slate-800 mb-3 text-sm">Nova Etapa</h3>
+                           <input
+                              autoFocus
+                              type="text"
+                              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-sm font-medium mb-3"
+                              placeholder="Nome da etapa"
+                              value={newStageName}
+                              onChange={e => setNewStageName(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && handleAddStage()}
+                           />
+                           <div className="flex gap-2">
+                              <button
+                                 onClick={() => setIsAddingStage(false)}
+                                 className="flex-1 py-2 text-slate-500 font-bold bg-slate-100 hover:bg-slate-200 rounded-lg text-xs"
+                              >
+                                 Cancelar
+                              </button>
+                              <button
+                                 onClick={handleAddStage}
+                                 className="flex-1 py-2 text-white font-bold bg-blue-600 hover:bg-blue-700 rounded-lg text-xs"
+                              >
+                                 Criar
+                              </button>
+                           </div>
+                        </div>
+                     )}
+                  </div>
+
                </div>
             </div>
          </DragDropContext>
@@ -723,85 +810,218 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
          )}
 
          {/* New Pipeline Modal */}
+         {/* New Pipeline Modal - Premium Modern Design */}
          {showNewPipelineModal && (
-            <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-sm animate-fade-in flex items-center justify-center p-4">
-               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 animate-scale-in">
-                  <div className="flex justify-between items-center mb-6">
-                     <h2 className="text-xl font-bold text-slate-800">Novo Pipeline</h2>
-                     <button onClick={() => setShowNewPipelineModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600">
-                        <X size={20} />
-                     </button>
-                  </div>
-                  <div className="space-y-4">
+            <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-md animate-fade-in flex items-center justify-center p-4">
+               <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-scale-in border border-white/20 ring-1 ring-black/5">
+
+                  {/* Modal Header */}
+                  <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
                      <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nome do Pipeline</label>
-                        <input
-                           autoFocus
-                           type="text"
-                           className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
-                           placeholder="Ex: Vendas 2024"
-                           value={newPipelineName}
-                           onChange={e => setNewPipelineName(e.target.value)}
-                        />
+                        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Novo Pipeline</h2>
+                        <p className="text-sm text-slate-400 font-medium mt-1">Configure seu funil de vendas personalizado</p>
                      </div>
                      <button
-                        onClick={handleCreatePipeline}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200 active:scale-95 transition-all"
+                        onClick={() => setShowNewPipelineModal(false)}
+                        className="p-2.5 hover:bg-slate-100/80 rounded-full text-slate-400 hover:text-red-500 transition-all active:scale-95"
                      >
-                        Criar Pipeline
+                        <X size={20} className="stroke-[2.5]" />
                      </button>
+                  </div>
+
+                  {/* Modal Content */}
+                  <div className="p-8 space-y-8 bg-slate-50/30">
+
+                     {/* Pipeline Name Section */}
+                     <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 block ml-1">Nome do Pipeline</label>
+                        <div className="relative group">
+                           <input
+                              autoFocus
+                              type="text"
+                              className="w-full pl-5 pr-5 py-4 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-lg text-slate-700 placeholder:text-slate-300 group-hover:border-slate-200"
+                              placeholder="Ex: Processo Comercial B2B"
+                              value={newPipelineName}
+                              onChange={e => setNewPipelineName(e.target.value)}
+                           />
+                           <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none">
+                              <LayoutGrid size={20} />
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Stages Section */}
+                     <div>
+                        <div className="flex justify-between items-end mb-4">
+                           <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Etapas do Funil</label>
+                           <button
+                              onClick={() => setNewPipelineStages([...newPipelineStages, { name: '', color: '#cbd5e1' }])}
+                              className="text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                           >
+                              <Plus size={16} className="stroke-[3]" /> Adicionar Etapa
+                           </button>
+                        </div>
+
+                        <div className="space-y-3 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar -mr-4 pl-1 pb-2">
+                           {newPipelineStages.map((stage, i) => (
+                              <div key={i} className="flex gap-3 items-center group animate-slide-up" style={{ animationDelay: `${i * 50}ms` }}>
+
+                                 {/* Order Indicator */}
+                                 <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-400 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                                    {i + 1}
+                                 </div>
+
+                                 {/* Color Picker Custom */}
+                                 <div className="relative flex-shrink-0">
+                                    <input
+                                       type="color"
+                                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                       value={stage.color}
+                                       onChange={e => {
+                                          const newStages = [...newPipelineStages];
+                                          newStages[i].color = e.target.value;
+                                          setNewPipelineStages(newStages);
+                                       }}
+                                    />
+                                    <div
+                                       className="w-12 h-12 rounded-2xl shadow-sm border-2 border-white ring-1 ring-slate-100 flex items-center justify-center transition-transform active:scale-90"
+                                       style={{ backgroundColor: stage.color }}
+                                    >
+                                       <div className="w-4 h-4 rounded-full bg-white/20 backdrop-blur-sm"></div>
+                                    </div>
+                                 </div>
+
+                                 {/* Stage Name Input */}
+                                 <input
+                                    type="text"
+                                    className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-sm font-bold text-slate-700 transition-all placeholder:text-slate-300 placeholder:font-medium"
+                                    placeholder={`Nome da Etapa ${i + 1}`}
+                                    value={stage.name}
+                                    onChange={e => {
+                                       const newStages = [...newPipelineStages];
+                                       newStages[i].name = e.target.value;
+                                       setNewPipelineStages(newStages);
+                                    }}
+                                 />
+
+                                 {/* Remove Button */}
+                                 {newPipelineStages.length > 1 && (
+                                    <button
+                                       onClick={() => {
+                                          const newStages = newPipelineStages.filter((_, idx) => idx !== i);
+                                          setNewPipelineStages(newStages);
+                                       }}
+                                       className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100"
+                                       title="Remover etapa"
+                                    >
+                                       <Trash2 size={18} />
+                                    </button>
+                                 )}
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+
+                     {/* Footer Actions */}
+                     <div className="pt-2">
+                        <button
+                           onClick={handleCreatePipeline}
+                           className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-xl shadow-slate-300 active:scale-[0.98] transition-all flex items-center justify-center gap-3 text-base"
+                        >
+                           <span>Criar Pipeline Personalizado</span>
+                           <ArrowRight size={20} className="text-slate-400" />
+                        </button>
+                     </div>
+
                   </div>
                </div>
             </div>
          )}
 
          {/* New Deal Modal */}
+         {/* New Deal Modal - Premium Modern Design */}
          {showNewDealModal && (
-            <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-sm animate-fade-in flex items-center justify-center p-4">
-               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 animate-scale-in">
-                  <div className="flex justify-between items-center mb-6">
-                     <h2 className="text-xl font-bold text-slate-800">Novo Negócio</h2>
-                     <button onClick={() => setShowNewDealModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600">
-                        <X size={20} />
-                     </button>
-                  </div>
-                  <div className="space-y-4">
-                     <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nome do Contato/Negócio</label>
-                        <input
-                           autoFocus
-                           type="text"
-                           className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
-                           placeholder="Ex: João Silva"
-                           value={newDealData.name}
-                           onChange={e => setNewDealData({ ...newDealData, name: e.target.value })}
-                        />
-                     </div>
-                     <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Telefone (Whatsapp)</label>
-                        <input
-                           type="text"
-                           className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
-                           placeholder="Ex: 5511999999999"
-                           value={newDealData.phone}
-                           onChange={e => setNewDealData({ ...newDealData, phone: e.target.value })}
-                        />
-                     </div>
-                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                           <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Valor (R$)</label>
-                           <input
-                              type="number"
-                              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
-                              placeholder="0,00"
-                              value={newDealData.value}
-                              onChange={e => setNewDealData({ ...newDealData, value: e.target.value })}
-                           />
+            <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-md animate-fade-in flex items-center justify-center p-4">
+               <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-scale-in border border-white/20 ring-1 ring-black/5">
+
+                  {/* Modal Header */}
+                  <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
+                     <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
+                           <DollarSign size={24} />
                         </div>
                         <div>
-                           <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Etapa Inicial</label>
+                           <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Novo Negócio</h2>
+                           <p className="text-sm text-slate-400 font-medium">Adicione uma nova oportunidade ao pipeline</p>
+                        </div>
+                     </div>
+                     <button onClick={() => setShowNewDealModal(false)} className="p-2.5 hover:bg-slate-100/80 rounded-full text-slate-400 hover:text-red-500 transition-all active:scale-95">
+                        <X size={20} className="stroke-[2.5]" />
+                     </button>
+                  </div>
+
+                  {/* Modal Content */}
+                  <div className="p-8 bg-slate-50/30 space-y-6">
+
+                     {/* Name Input */}
+                     <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Nome do Cliente / Oportunidade</label>
+                        <div className="relative group">
+                           <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                              <LayoutGrid size={20} />
+                           </div>
+                           <input
+                              autoFocus
+                              type="text"
+                              className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-lg text-slate-700 placeholder:text-slate-300 placeholder:font-medium"
+                              placeholder="Ex: João Silva - Projeto Site"
+                              value={newDealData.name}
+                              onChange={e => setNewDealData({ ...newDealData, name: e.target.value })}
+                           />
+                        </div>
+                     </div>
+
+                     {/* Contact Info Grid */}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                           <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">WhatsApp</label>
+                           <div className="relative group">
+                              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-green-500 transition-colors">
+                                 <Phone size={20} />
+                              </div>
+                              <input
+                                 type="text"
+                                 className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
+                                 placeholder="5511999999999"
+                                 value={newDealData.phone}
+                                 onChange={e => setNewDealData({ ...newDealData, phone: e.target.value })}
+                              />
+                           </div>
+                        </div>
+
+                        <div className="space-y-2">
+                           <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Valor Estimado</label>
+                           <div className="relative group">
+                              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                                 <span className="font-bold text-sm">R$</span>
+                              </div>
+                              <input
+                                 type="number"
+                                 className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-bold text-slate-700"
+                                 placeholder="0,00"
+                                 value={newDealData.value}
+                                 onChange={e => setNewDealData({ ...newDealData, value: e.target.value })}
+                              />
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Stage Selector */}
+                     <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Etapa Inicial</label>
+                        <div className="relative">
                            <select
-                              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
+                              className="w-full pl-4 pr-10 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700 appearance-none cursor-pointer hover:border-blue-300"
                               value={newDealData.stage_id}
                               onChange={e => setNewDealData({ ...newDealData, stage_id: e.target.value })}
                            >
@@ -809,14 +1029,23 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                                  <option key={s.id} value={s.id}>{s.name}</option>
                               ))}
                            </select>
+                           <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                              <ArrowRight size={16} className="rotate-90" />
+                           </div>
                         </div>
                      </div>
-                     <button
-                        onClick={handleCreateDeal}
-                        className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-lg shadow-slate-300 active:scale-95 transition-all mt-2"
-                     >
-                        Criar Negócio
-                     </button>
+
+                     {/* Action Button */}
+                     <div className="pt-4">
+                        <button
+                           onClick={handleCreateDeal}
+                           className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-xl shadow-slate-300 active:scale-[0.98] transition-all flex items-center justify-center gap-3 text-base group"
+                        >
+                           <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+                           Criar Novo Negócio
+                        </button>
+                     </div>
+
                   </div>
                </div>
             </div>
