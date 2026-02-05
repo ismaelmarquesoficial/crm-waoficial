@@ -30,6 +30,7 @@ router.get('/', async (req, res) => {
                 c.name, 
                 c.phone, 
                 c.last_interaction,
+                c.tags,
                 (SELECT message FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message,
                 (SELECT type FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message_type,
                 (SELECT timestamp FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message_time,
@@ -187,6 +188,74 @@ router.post('/:contactId/send', async (req, res) => {
     } catch (err) {
         console.error('Erro ao enviar mensagem:', err.response?.data || err.message);
         res.status(500).json({ error: 'Erro ao enviar mensagem via WhatsApp.' });
+    }
+});
+
+// ==========================================
+// ROTAS DE TAGS
+// ==========================================
+
+// Listar tags de um contato
+router.get('/contacts/:contactId/tags', async (req, res) => {
+    try {
+        const { contactId } = req.params;
+        const result = await db.query(
+            'SELECT tags FROM contacts WHERE id = $1 AND tenant_id = $2',
+            [contactId, req.tenantId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Contato não encontrado' });
+        }
+
+        res.json({ tags: result.rows[0].tags || [] });
+    } catch (err) {
+        console.error('Erro ao buscar tags:', err);
+        res.status(500).json({ error: 'Erro ao buscar tags' });
+    }
+});
+
+// Adicionar tag a um contato
+router.post('/contacts/:contactId/tags', async (req, res) => {
+    try {
+        const { contactId } = req.params;
+        const { tag } = req.body;
+
+        if (!tag) {
+            return res.status(400).json({ error: 'Tag é obrigatória' });
+        }
+
+        await db.query(`
+            UPDATE contacts 
+            SET tags = CASE 
+                WHEN $2 = ANY(tags) THEN tags
+                ELSE array_append(tags, $2)
+            END
+            WHERE id = $1 AND tenant_id = $3
+        `, [contactId, tag, req.tenantId]);
+
+        res.json({ message: 'Tag adicionada com sucesso' });
+    } catch (err) {
+        console.error('Erro ao adicionar tag:', err);
+        res.status(500).json({ error: 'Erro ao adicionar tag' });
+    }
+});
+
+// Remover tag de um contato
+router.delete('/contacts/:contactId/tags/:tag', async (req, res) => {
+    try {
+        const { contactId, tag } = req.params;
+
+        await db.query(`
+            UPDATE contacts 
+            SET tags = array_remove(tags, $2)
+            WHERE id = $1 AND tenant_id = $3
+        `, [contactId, tag, req.tenantId]);
+
+        res.json({ message: 'Tag removida com sucesso' });
+    } catch (err) {
+        console.error('Erro ao remover tag:', err);
+        res.status(500).json({ error: 'Erro ao remover tag' });
     }
 });
 

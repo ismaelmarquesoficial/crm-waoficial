@@ -395,6 +395,25 @@ const findContactId = async (tenantId, phone) => {
     return insert.rows[0].id;
 };
 
+// Adicionar tag da campanha ao contato
+const addCampaignTagToContact = async (contactId, campaignName) => {
+    try {
+        // Usa operador de array do PostgreSQL para adicionar apenas se não existir
+        await db.query(`
+            UPDATE contacts 
+            SET tags = CASE 
+                WHEN $2 = ANY(tags) THEN tags
+                ELSE array_append(tags, $2)
+            END
+            WHERE id = $1
+        `, [contactId, campaignName]);
+
+        console.log(`🏷️ [WORKER] Tag "${campaignName}" adicionada ao contato ${contactId}`);
+    } catch (e) {
+        console.error('⚠️ [WORKER] Erro ao adicionar tag:', e);
+    }
+};
+
 const insertChatLog = async (msg, metaId, bodyText) => {
     try {
         const contactId = await findContactId(msg.tenant_id, msg.phone);
@@ -415,6 +434,9 @@ const insertChatLog = async (msg, metaId, bodyText) => {
                 message: result.rows[0]
             });
         }
+
+        // --- ADICIONAR TAG DA CAMPANHA ---
+        await addCampaignTagToContact(contactId, msg.campaign_name);
 
         // --- CRM TRIGGER (ON SENT) ---
         if (msg.crm_trigger_rule === 'on_sent' && msg.crm_pipeline_id && msg.crm_stage_id) {
