@@ -234,13 +234,22 @@ const insertChatLog = async (msg, metaId, bodyText) => {
     try {
         const contactId = await findContactId(msg.tenant_id, msg.phone);
         const timestamp = new Date(); // UTC Node.js
-        await db.query(
+        const result = await db.query(
             `INSERT INTO chat_logs 
             (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, direction, timestamp, created_at) 
-            VALUES ($1, $2, $3, $4, $5, 'template', 'OUTBOUND', $6, $6)`,
-            [msg.tenant_id, contactId, msg.whatsapp_account_id, metaId, bodyText, timestamp]
+            VALUES ($1, $2, $3, $4, $5, 'template', 'OUTBOUND', $6::timestamptz, $6::timestamptz)
+            RETURNING *`,
+            [msg.tenant_id, contactId, msg.whatsapp_account_id, metaId, bodyText, timestamp.toISOString()]
         );
         console.log(`✅ [WORKER] ChatLog salvo com sucesso! ID Contato: ${contactId} | Time: ${timestamp.toISOString()}`);
+
+        // Emit socket event to notify frontend
+        if (ioInstance) {
+            ioInstance.to(`tenant_${msg.tenant_id}`).emit('new_message', {
+                contactId: contactId,
+                message: result.rows[0]
+            });
+        }
 
         // --- CRM TRIGGER (ON SENT) ---
         if (msg.crm_trigger_rule === 'on_sent' && msg.crm_pipeline_id && msg.crm_stage_id) {

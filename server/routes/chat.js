@@ -48,11 +48,12 @@ router.get('/', async (req, res) => {
     }
 });
 
-// 2. Histórico de Mensagens de um Contato - COM FILTRO DE CANAL
+// 2. Histórico de Mensagens de um Contato - COM FILTRO DE CANAL E PAGINAÇÃO
 router.get('/:contactId/messages', async (req, res) => {
     const { contactId } = req.params;
-    const { channelId } = req.query; // Receber filtro da conta
-    const limit = 100;
+    const { channelId, offset } = req.query; // Receber filtro da conta e offset para paginação
+    const limit = 100; // Carregar 100 mensagens por vez
+    const offsetNum = parseInt(offset) || 0;
 
     try {
         const tenantId = req.tenantId || (req.user && req.user.tenantId);
@@ -67,16 +68,22 @@ router.get('/:contactId/messages', async (req, res) => {
         if (channelId && channelId !== 'all') {
             query += " AND whatsapp_account_id = $2";
             params.push(channelId);
-            params.push(limit); // limit passa a ser $3
-            query += " ORDER BY timestamp ASC LIMIT $3";
+            params.push(limit);
+            params.push(offsetNum);
+            query += " ORDER BY timestamp DESC LIMIT $3 OFFSET $4"; // DESC to get most recent
         } else {
-            params.push(limit); // limit é $2
-            query += " ORDER BY timestamp ASC LIMIT $2";
+            params.push(limit);
+            params.push(offsetNum);
+            query += " ORDER BY timestamp DESC LIMIT $2 OFFSET $3"; // DESC to get most recent
         }
 
         const result = await db.query(query, params);
 
-        res.json(result.rows);
+        // Reverse to show oldest first (chronological order)
+        res.json({
+            messages: result.rows.reverse(),
+            hasMore: result.rows.length === limit // Se retornou exatamente o limit, provavelmente tem mais
+        });
     } catch (err) {
         console.error('Erro ao buscar mensagens:', err);
         res.status(500).json({ error: 'Erro ao buscar mensagens' });
@@ -158,15 +165,15 @@ router.post('/:contactId/send', async (req, res) => {
         const wamid = metaRes.data.messages[0].id;
 
         // Salvar no Banco (OUTBOUND em UTC)
+        // CRITICAL: Use UTC explicitly to avoid timezone issues
         const timestamp = new Date();
-        console.log(`📤 [DEBUG] Criando mensagem OUTBOUND. Timestamp UTC Node: ${timestamp.toISOString()} | Local Server: ${timestamp.toString()}`);
 
         const insert = await db.query(
             `INSERT INTO chat_logs 
             (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, direction, status, timestamp, created_at) 
-            VALUES ($1, $2, $3, $4, $5, 'text', 'OUTBOUND', 'sent', $6, $6)
+            VALUES ($1, $2, $3, $4, $5, 'text', 'OUTBOUND', 'sent', $6::timestamptz, $6::timestamptz)
             RETURNING *`,
-            [tenantId, contactId, channel.id, wamid, content, timestamp]
+            [tenantId, contactId, channel.id, wamid, content, timestamp.toISOString()]
         );
 
         // Emitir Socket

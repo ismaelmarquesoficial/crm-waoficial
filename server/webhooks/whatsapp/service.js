@@ -39,7 +39,6 @@ const WhatsAppService = {
         const wamid = messageData.id;
         const type = messageData.type;
         const timestamp = new Date(parseInt(messageData.timestamp) * 1000);
-        console.log(`📥 [DEBUG] Processando INBOUND. Meta Unix: ${messageData.timestamp} | Convertido: ${timestamp.toString()}`);
 
         let body = '';
         let mediaUrl = null;
@@ -59,10 +58,11 @@ const WhatsAppService = {
         const insert = await db.query(
             `INSERT INTO chat_logs 
             (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, media_url, file_name, direction, timestamp, created_at) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'INBOUND', $9, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'INBOUND', $9::timestamptz, $9::timestamptz)
             RETURNING *`,
-            [tenantId, contactId, accountId, wamid, body, type, mediaUrl, fileName, timestamp]
+            [tenantId, contactId, accountId, wamid, body, type, mediaUrl, fileName, timestamp.toISOString()]
         );
+
 
         // 3. Verificar Gatilhos de Campanha (On Reply)
         await WhatsAppService.checkCampaignReply(tenantId, contactId, body, io);

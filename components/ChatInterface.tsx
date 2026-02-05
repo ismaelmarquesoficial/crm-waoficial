@@ -88,6 +88,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   // Emoji Picker State
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -102,6 +104,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const activeContactIdRef = useRef(activeContactId);
   useEffect(() => { activeContactIdRef.current = activeContactId; }, [activeContactId]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
@@ -150,7 +153,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
         avatar: c.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || c.phone)}&background=random`,
         pipelineStage: '',
         lastMessage: c.last_message || 'Nova conversa',
-        lastMessageTime: c.last_message_time ? new Date(c.last_message_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }) : '',
+        lastMessageTime: c.last_message_time ? new Date(c.last_message_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
         unreadCount: parseInt(c.unread_count || '0'),
         tags: []
       }));
@@ -161,13 +164,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     }
   }, [selectedChannel]);
 
-  const fetchMessages = useCallback(async (contactId: string) => {
-    setIsLoading(true);
+  const fetchMessages = useCallback(async (contactId: string, offset = 0) => {
+
+    if (offset === 0) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+
     const token = localStorage.getItem('token');
     try {
       const url = new URL(`http://localhost:3001/api/chat/${contactId}/messages`);
       if (selectedChannel && selectedChannel !== 'all') {
         url.searchParams.append('channelId', selectedChannel);
+      }
+      if (offset > 0) {
+        url.searchParams.append('offset', offset.toString());
       }
 
       const res = await fetch(url.toString(), {
@@ -175,24 +187,49 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       });
       const data = await res.json();
 
-      const mappedMessages: Message[] = data.map((m: any) => ({
-        id: m.id,
-        contactId: m.contact_id,
-        sender: m.direction === 'INBOUND' ? 'contact' : 'user',
-        type: (m.type === 'template' ? 'text' : (m.type || 'text')) as MessageType,
-        content: (['image', 'audio', 'video', 'document'].includes(m.type) && m.media_url) ? m.media_url : m.message,
-        timestamp: new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }),
-        status: m.status || 'read',
-        fileName: m.file_name
-      }));
+      // Handle both old format (array) and new format ({messages, hasMore})
+      const messagesArray = Array.isArray(data) ? data : (data.messages || []);
+      const hasMoreMessages = Array.isArray(data) ? false : (data.hasMore || false);
 
-      setMessages(mappedMessages);
+      const mappedMessages: Message[] = messagesArray.map((m: any) => {
+        // Parse timestamp correctly - PostgreSQL returns UTC timestamps
+        const date = new Date(m.timestamp);
+        const localTime = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+
+
+        return {
+          id: m.id,
+          contactId: m.contact_id,
+          sender: m.direction === 'INBOUND' ? 'contact' : 'user',
+          type: (m.type === 'template' ? 'text' : (m.type || 'text')) as MessageType,
+          content: (['image', 'audio', 'video', 'document'].includes(m.type) && m.media_url) ? m.media_url : m.message,
+          timestamp: localTime,
+          status: m.status || 'read',
+          fileName: m.file_name
+        };
+      });
+
+      if (offset === 0) {
+        setMessages(mappedMessages);
+      } else {
+        // Prepend older messages
+        setMessages(prev => [...mappedMessages, ...prev]);
+      }
+
+      setHasMore(hasMoreMessages);
     } catch (err) {
       console.error('Erro ao buscar mensagens:', err);
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
   }, [selectedChannel]);
+
+  const loadMoreMessages = useCallback(() => {
+    if (!activeContactId || isLoadingMore || !hasMore) return;
+    fetchMessages(activeContactId, messages.length);
+  }, [activeContactId, isLoadingMore, hasMore, messages.length, fetchMessages]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || !activeContactId) return;
@@ -238,6 +275,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     scrollToBottom();
   }, [messages, isLoading]);
 
+  // Infinite scroll: load more messages when scrolling to top
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      if (container.scrollTop < 100 && !isLoadingMore && hasMore) {
+        const scrollHeight = container.scrollHeight;
+        const scrollTop = container.scrollTop;
+
+        loadMoreMessages();
+
+        // Maintain scroll position after loading
+        setTimeout(() => {
+          if (messagesContainerRef.current) {
+            const newScrollHeight = messagesContainerRef.current.scrollHeight;
+            messagesContainerRef.current.scrollTop = scrollTop + (newScrollHeight - scrollHeight);
+          }
+        }, 100);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [isLoadingMore, hasMore, loadMoreMessages]);
+
   useEffect(() => {
     const socket = io('http://localhost:3001');
     socket.on('connect', () => {
@@ -251,9 +314,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     });
 
     socket.on('new_message', (data: any) => {
-      console.log('Nova mensagem recebida:', data);
+      // Extract contactId - handle both formats
+      const messageContactId = data.contactId || data.message?.contact_id || data.contact_id;
+
       fetchChats();
-      if (activeContactIdRef.current && data.contactId === activeContactIdRef.current) {
+      if (activeContactIdRef.current && messageContactId && activeContactIdRef.current == messageContactId) {
         fetchMessages(activeContactIdRef.current);
       }
     });
@@ -507,7 +572,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 z-10">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 z-10">
+              {/* Loading more indicator */}
+              {isLoadingMore && (
+                <div className="flex justify-center py-2">
+                  <div className="bg-white/80 backdrop-blur px-3 py-1 rounded-full shadow-sm border border-slate-100 text-xs font-medium text-slate-500 flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce"></div>
+                    Carregando mais...
+                  </div>
+                </div>
+              )}
+
               {isLoading && (
                 <div className="flex justify-center py-4">
                   <div className="bg-white/80 backdrop-blur px-4 py-1.5 rounded-full shadow-sm border border-slate-100 text-xs font-semibold text-blue-500 animate-pulse flex items-center gap-2">
