@@ -54,6 +54,7 @@ const processBatch = async () => {
     const query = `
         SELECT r.id, r.phone, r.variables, r.tenant_id, r.campaign_id, 
                c.whatsapp_account_id, c.template_id, c.name as campaign_name,
+               c.crm_pipeline_id, c.crm_stage_id, c.crm_trigger_rule,
                wa.waba_id, wa.phone_number_id, wa.permanent_token,
                wt.name as template_name, wt.language as template_lang, wt.components as template_components,
                wt.header_vars_count, wt.body_vars_count,
@@ -240,8 +241,30 @@ const insertChatLog = async (msg, metaId, bodyText) => {
             [msg.tenant_id, contactId, msg.whatsapp_account_id, metaId, bodyText, timestamp]
         );
         console.log(`✅ [WORKER] ChatLog salvo com sucesso! ID Contato: ${contactId} | Time: ${timestamp.toISOString()}`);
+
+        // --- CRM TRIGGER (ON SENT) ---
+        if (msg.crm_trigger_rule === 'on_sent' && msg.crm_pipeline_id && msg.crm_stage_id) {
+            await createDeal(msg.tenant_id, contactId, msg.crm_pipeline_id, msg.crm_stage_id, msg.campaign_name, msg.phone);
+        }
+
     } catch (e) {
         console.error('⚠️ [WORKER] FALHA ao salvar log de chat:', e);
+    }
+};
+
+const createDeal = async (tenantId, contactId, pipelineId, stageId, title, phone) => {
+    try {
+        // Evitar duplicidade abusiva (Opcional: verifica se já tem deal nesse stage recém criado? 
+        // Por enquanto, vamos permitir multiplos deals pois pode ser campanha diferente)
+
+        await db.query(
+            `INSERT INTO deals (tenant_id, contact_id, pipeline_id, stage_id, title, status, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 'open', NOW(), NOW())`,
+            [tenantId, contactId, pipelineId, stageId, `Campanha: ${title}`]
+        );
+        console.log(`💼 [CRM] Deal criado para ${phone} via Campanha.`);
+    } catch (e) {
+        console.error('⚠️ [CRM] Falha ao criar Deal:', e);
     }
 };
 

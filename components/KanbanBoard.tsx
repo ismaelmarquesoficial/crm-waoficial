@@ -264,7 +264,10 @@ const KanbanBoard: React.FC = () => {
                                  {stageCards.length}
                               </span>
                            </div>
-                           <div className={`h-1 w-full rounded-full ${stage.color || 'bg-slate-200'} mb-2 opacity-80`}></div>
+                           <div
+                              className={`h-1 w-full rounded-full mb-2 opacity-80 ${(stage.color && !stage.color.startsWith('#')) ? stage.color : ''}`}
+                              style={stage.color?.startsWith('#') ? { backgroundColor: stage.color } : {}}
+                           ></div>
                            <p className="text-xs font-medium text-slate-400">Total: <span className="text-slate-600">{stageValue}</span></p>
                         </div>
 
@@ -277,7 +280,10 @@ const KanbanBoard: React.FC = () => {
                                  className="bg-white p-4 rounded-xl border border-slate-200 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.1)] hover:border-meta/30 hover:-translate-y-1 transition-all duration-200 cursor-pointer group relative overflow-hidden"
                               >
                                  {/* Stage Indicator Bar */}
-                                 <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${stage.color || 'bg-slate-200'}`}></div>
+                                 <div
+                                    className={`absolute left-0 top-0 bottom-0 w-1.5 ${(stage.color && !stage.color.startsWith('#')) ? stage.color : ''}`}
+                                    style={stage.color?.startsWith('#') ? { backgroundColor: stage.color } : {}}
+                                 ></div>
 
                                  <div className="flex justify-between items-start mb-2 pl-2">
                                     <div>

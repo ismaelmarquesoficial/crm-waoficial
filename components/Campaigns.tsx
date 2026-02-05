@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Clock, Plus, LayoutTemplate, FileSpreadsheet, Calendar as CalendarIcon, X, Check, ChevronRight, RefreshCw, Trash2, User, Phone, CheckCircle, AlertTriangle, Copy, Map as MapIcon } from 'lucide-react';
+import { Send, Clock, Plus, LayoutTemplate, FileSpreadsheet, Calendar as CalendarIcon, X, Check, CheckCheck, ChevronRight, RefreshCw, Trash2, User, Phone, CheckCircle, AlertTriangle, Copy, Map as MapIcon } from 'lucide-react';
 import { Campaign, Template } from '../types';
 import Papa from 'papaparse';
 import { io } from 'socket.io-client';
@@ -139,7 +139,6 @@ const TemplatePreviewModal = ({ template, onClose }: { template: any, onClose: (
 const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowSuccess, initialData }: { onClose: () => void, channels: any[], templates: any[], onSuccess: () => void, onShowSuccess: (msg: string) => void, initialData?: any }) => {
   const [step, setStep] = useState(1);
   const [name, setName] = useState(initialData?.name || '');
-  // LOGICA PRE-FILL DUPLICACAO
   const [selectedChannel, setSelectedChannel] = useState<string>(initialData?.channelId ? String(initialData.channelId) : '');
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
 
@@ -160,21 +159,57 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
   const [recipientsData, setRecipientsData] = useState<any[]>(initialData?.recipients || []);
   const [manualName, setManualName] = useState('');
   const [manualPhone, setManualPhone] = useState('');
-  const [manualVarsInput, setManualVarsInput] = useState(''); // Novo Input
+  const [manualVarsInput, setManualVarsInput] = useState('');
 
   // Mapping States
   const [templateVars, setTemplateVars] = useState<string[]>([]);
   const [varMapping, setVarMapping] = useState<Record<string, { type: 'column' | 'custom', value: string }>>({});
 
+  // CRM States
+  const [pipelines, setPipelines] = useState<any[]>([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
+  const [selectedStageId, setSelectedStageId] = useState<string>('');
+  const [crmTriggerRule, setCrmTriggerRule] = useState<'none' | 'on_sent' | 'on_reply'>('none');
+
+  // New Pipeline Creation State
+  const [showNewPipelineInput, setShowNewPipelineInput] = useState(false);
+  const [newPipelineName, setNewPipelineName] = useState('');
+
   const [scheduledAt, setScheduledAt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleCreatePipeline = async () => {
+    if (!newPipelineName.trim()) return;
+    try {
+      const res = await fetch('http://localhost:3001/api/crm/pipelines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        body: JSON.stringify({ name: newPipelineName })
+      });
+      if (res.ok) {
+        const newPipe = await res.json();
+        setPipelines([...pipelines, newPipe]);
+        setSelectedPipelineId(String(newPipe.id));
+        if (newPipe.stages && newPipe.stages.length > 0) {
+          setSelectedStageId(String(newPipe.stages[0].id)); // Seleciona estágio padrão (Disparado)
+        }
+        setShowNewPipelineInput(false);
+        setNewPipelineName('');
+      }
+    } catch (e) { alert('Erro ao criar pipeline.'); }
+  };
+
   useEffect(() => {
     if (channels.length > 0 && !selectedChannel) setSelectedChannel(channels[0].id.toString());
+
+    // Fetch Pipelines
+    fetch('http://localhost:3001/api/crm/pipelines', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    }).then(r => r.json()).then(setPipelines).catch(() => { });
   }, [channels]);
 
-  // Se o template mudar, detectamos variáveis (Universal Match)
+  // ... (Efeito de Template Vars mantido igual) ...
   useEffect(() => {
     if (!selectedTemplate) {
       setTemplateVars([]);
@@ -194,7 +229,6 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
         }
       });
     }
-    // FIX: ORDENAÇÃO HÍBRIDA (Numérica ou Alfanumérica)
     const vars = Array.from(foundVars).sort((a, b) => {
       const numA = parseInt(a);
       const numB = parseInt(b);
@@ -242,15 +276,12 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
       // Modo Manual
       setRecipientsData(prev => prev.map(r => {
         if (r.source === 'csv') return r;
-
-        // É contato manual
         const finalVars = templateVars.map((v, idx) => {
           const map = varMapping[v];
           if (map?.type === 'custom' && map.value) return map.value;
           if (r.manualVars && r.manualVars[idx]) return r.manualVars[idx];
           return '';
         });
-
         return { ...r, variables: finalVars };
       }));
     }
@@ -301,7 +332,16 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
       const res = await fetch('http://localhost:3001/api/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ name: name || `Campanha ${new Date().toLocaleDateString()}`, channelId: selectedChannel, templateId: selectedTemplate.id, scheduledAt: finalScheduledAt, recipients: recipientsData })
+        body: JSON.stringify({
+          name: name || `Campanha ${new Date().toLocaleDateString()}`,
+          channelId: selectedChannel,
+          templateId: selectedTemplate.id,
+          scheduledAt: finalScheduledAt,
+          recipients: recipientsData,
+          crmPipelineId: selectedPipelineId || null,
+          crmStageId: selectedStageId || null,
+          crmTriggerRule: crmTriggerRule
+        })
       });
       if (res.ok) { const d = await res.json(); onSuccess(); onShowSuccess(`Campanha ${d.status === 'scheduled' ? 'agendada' : 'criada'}!\n${d.total_recipients} contatos.`); onClose(); }
       else { const err = await res.json(); alert(err.error); }
@@ -309,25 +349,26 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
   };
   const availableTemplates = templates.filter(t => t.account_id?.toString() === selectedChannel);
 
+  const selectedPipelineObj = pipelines.find(p => String(p.id) === selectedPipelineId);
+
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 text-slate-800">
       <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] border border-white/20">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white/50 backdrop-blur-md rounded-t-3xl">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Nova Campanha</h2>
+            <h2 className="text-xl font-bold text-slate-900">Nova Campanha - Passo {step}</h2>
             <div className="flex items-center gap-2 mt-1">
-              <div className={`h-1.5 w-8 rounded-full ${step >= 1 ? 'bg-indigo-600' : 'bg-slate-200'}`} />
-              <div className={`h-1.5 w-8 rounded-full ${step >= 2 ? 'bg-indigo-600' : 'bg-slate-200'}`} />
-              <div className={`h-1.5 w-8 rounded-full ${step >= 3 ? 'bg-indigo-600' : 'bg-slate-200'}`} />
-              <span className="text-xs text-slate-400 ml-2 font-medium">Passo {step} de 3</span>
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className={`h-1.5 w-8 rounded-full ${step >= i ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+              ))}
             </div>
           </div>
           <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={18} /></button>
         </div>
         <div className="p-8 flex-1 overflow-y-auto">
           {step === 1 && (<div className="space-y-6 animate-fade-in">
-            <div><label className="block text-sm font-medium text-slate-700 mb-2">Nome da Campanha</label><input value={name} onChange={e => setName(e.target.value)} className="w-full border p-3 rounded-lg" placeholder="Ex: Promoção Janeiro" /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-2">Canal</label><select value={selectedChannel} onChange={e => setSelectedChannel(e.target.value)} className="w-full border p-3 rounded-lg bg-white"><option value="">Selecione...</option>{channels.map(ch => <option key={ch.id} value={ch.id}>{ch.instance_name} ({ch.display_phone_number})</option>)}</select></div>
+            <div><label className="block text-sm font-medium text-slate-700 mb-2">Nome da Campanha</label><input value={name} onChange={e => setName(e.target.value)} className="w-full border p-3 rounded-lg block" placeholder="Ex: Promoção Janeiro" /></div>
+            <div><label className="block text-sm font-medium text-slate-700 mb-2">Canal</label><select value={selectedChannel} onChange={e => setSelectedChannel(e.target.value)} className="w-full border p-3 rounded-lg bg-white block"><option value="">Selecione...</option>{channels.map(ch => <option key={ch.id} value={ch.id}>{ch.instance_name} ({ch.display_phone_number})</option>)}</select></div>
             <div><label className="block text-sm font-medium text-slate-700 mb-2">Destinatários</label>
               <div className="flex gap-4 mb-4 bg-slate-50 p-1 rounded-lg w-max"><button onClick={() => setInputMode('csv')} className={`px-4 py-1.5 rounded-md text-sm ${inputMode === 'csv' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>CSV / Planilha</button><button onClick={() => setInputMode('manual')} className={`px-4 py-1.5 rounded-md text-sm ${inputMode === 'manual' ? 'bg-white shadow-sm' : 'text-slate-500'}`}>Manual</button></div>
 
@@ -347,15 +388,15 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                 <div className="flex gap-2 items-end">
                   <div className="w-1/4">
                     <label className="text-xs text-slate-500 font-medium">Nome</label>
-                    <input value={manualName} onChange={e => setManualName(e.target.value)} className="w-full border p-2 rounded-lg text-sm" placeholder="João" />
+                    <input value={manualName} onChange={e => setManualName(e.target.value)} className="w-full border p-2 rounded-lg text-sm block" placeholder="João" />
                   </div>
                   <div className="w-1/4">
                     <label className="text-xs text-slate-500 font-medium">WhatsApp</label>
-                    <input value={manualPhone} onChange={e => setManualPhone(e.target.value)} className="w-full border p-2 rounded-lg text-sm" placeholder="1199..." />
+                    <input value={manualPhone} onChange={e => setManualPhone(e.target.value)} className="w-full border p-2 rounded-lg text-sm block" placeholder="1199..." />
                   </div>
                   <div className="flex-1">
                     <label className="text-xs text-slate-500 font-medium">Vars. (sep. ;)</label>
-                    <input value={manualVarsInput} onChange={e => setManualVarsInput(e.target.value)} className="w-full border p-2 rounded-lg text-sm" placeholder="Ex: 10/10; R$50" />
+                    <input value={manualVarsInput} onChange={e => setManualVarsInput(e.target.value)} className="w-full border p-2 rounded-lg text-sm block" placeholder="Ex: 10/10; R$50" />
                   </div>
                   <button onClick={handleAddManualContact} className="bg-slate-900 text-white p-2 text-sm font-medium rounded-lg h-[38px] px-4 hover:bg-slate-800 transition-colors">Add</button>
                 </div>
@@ -397,11 +438,10 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4 max-h-[300px] overflow-y-auto">{availableTemplates.length === 0 ? <p className="text-sm text-slate-500 col-span-2">Nenhum template aprovado neste canal.</p> : availableTemplates.map(t => (<div key={t.id} onClick={() => setSelectedTemplate(t)} className={`border p-4 rounded-xl cursor-pointer text-sm transition-all ${selectedTemplate?.id === t.id ? 'border-meta bg-meta/5 ring-1 ring-meta' : 'hover:border-slate-300'}`}><div className="font-semibold mb-1">{t.name}</div><div className="text-xs text-slate-500 truncate">{t.language}</div></div>))}</div>
 
-              {/* MAPA DE VARIÁVEIS - SÓ APARECE SE TIVER VARIÁVEIS E TEM PLATE SELECIONADO */}
+              {/* MAPA DE VARIÁVEIS */}
               {selectedTemplate && templateVars.length > 0 && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 animate-fade-in shadow-sm">
                   <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><MapIcon size={16} /> Mapeamento de Variáveis</h3>
-                  <p className="text-xs text-slate-500 mb-4">Se usar CSV, escolha as colunas. Se Manual, deixe como Coluna (vazio) para usar o que digitou no campo Vars.</p>
                   <div className="space-y-3">
                     {templateVars.map(v => (
                       <div key={v} className="grid grid-cols-12 gap-2 items-center">
@@ -410,10 +450,9 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                           <select
                             value={varMapping[v]?.type || 'custom'}
                             onChange={e => setVarMapping({ ...varMapping, [v]: { type: e.target.value as any, value: '' } })}
-                            className="w-full text-xs p-2 rounded border focus:ring-meta bg-white shadow-sm"
+                            className="w-full text-xs p-2 rounded border focus:ring-meta bg-white shadow-sm block"
                           >
                             <option value="custom">Texto Fixo (Todos)</option>
-                            {/* Opção semantica para 'Variável do Contato' */}
                             <option value="column">Do CSV / Manual</option>
                           </select>
                         </div>
@@ -423,7 +462,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                               <select
                                 value={varMapping[v]?.value}
                                 onChange={e => setVarMapping({ ...varMapping, [v]: { ...varMapping[v], value: e.target.value } })}
-                                className="w-full text-xs p-2 rounded border bg-white focus:ring-meta shadow-sm"
+                                className="w-full text-xs p-2 rounded border bg-white focus:ring-meta shadow-sm block"
                               >
                                 <option value="">(Manual ou Nenhuma)</option>
                                 {csvColumns.map(c => <option key={c} value={c}>{c}</option>)}
@@ -434,7 +473,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                               placeholder="Valor fixo (ex: Empresa X)"
                               value={varMapping[v]?.value}
                               onChange={e => setVarMapping({ ...varMapping, [v]: { ...varMapping[v], value: e.target.value } })}
-                              className="w-full text-xs p-2 rounded border focus:ring-meta shadow-sm"
+                              className="w-full text-xs p-2 rounded border focus:ring-meta shadow-sm block"
                             />
                           )}
                         </div>
@@ -446,7 +485,120 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
             </div>
           )}
 
-          {step === 3 && (<div className="space-y-6">
+          {/* STEP 3: CRM & AUTOMATION (NEW) */}
+          {step === 3 && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 mb-6">
+                <div className="flex gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                    <LayoutTemplate size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">Automação de Pipeline</h3>
+                    <p className="text-xs text-slate-500 leading-relaxed mt-1">Defina o que acontece no CRM com os contatos desta campanha.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Trigger Rule Selection */}
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-3 uppercase tracking-wide text-[10px]">Regra de Gatilho</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <button
+                    onClick={() => setCrmTriggerRule('none')}
+                    className={`p-4 rounded-xl border text-left transition-all ${crmTriggerRule === 'none' ? 'bg-slate-800 text-white border-slate-800 shadow-lg' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                  >
+                    <div className="font-bold mb-1 text-sm">Apenas Aviso</div>
+                    <div className={`text-[10px] ${crmTriggerRule === 'none' ? 'text-slate-300' : 'text-slate-400'}`}>Não gera cards no CRM. Ideal para comunicados.</div>
+                  </button>
+
+                  <button
+                    onClick={() => setCrmTriggerRule('on_sent')}
+                    className={`p-4 rounded-xl border text-left transition-all ${crmTriggerRule === 'on_sent' ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                  >
+                    <div className="font-bold mb-1 text-sm flex items-center gap-1"><Send size={12} /> Ao Enviar</div>
+                    <div className={`text-[10px] ${crmTriggerRule === 'on_sent' ? 'text-blue-100' : 'text-slate-400'}`}>Gera cards para todos assim que dispara.</div>
+                  </button>
+
+                  <button
+                    onClick={() => setCrmTriggerRule('on_reply')}
+                    className={`p-4 rounded-xl border text-left transition-all ${crmTriggerRule === 'on_reply' ? 'bg-amber-500 text-white border-amber-500 shadow-lg' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                  >
+                    <div className="font-bold mb-1 text-sm flex items-center gap-1"><CheckCheck size={12} /> Ao Responder</div>
+                    <div className={`text-[10px] ${crmTriggerRule === 'on_reply' ? 'text-amber-100' : 'text-slate-400'}`}>Gera cards apenas para leads quentes (ex: "Tenho interesse").</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Pipeline Selection (Only if Rule != none) */}
+              {crmTriggerRule !== 'none' && (
+                <div className="grid grid-cols-2 gap-4 animate-fade-in-up">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="block text-sm font-bold text-slate-700">Funil de Destino</label>
+                      {!showNewPipelineInput && (
+                        <button
+                          onClick={() => setShowNewPipelineInput(true)}
+                          className="text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 group"
+                        >
+                          <Plus size={10} className="group-hover:rotate-90 transition-transform" /> Novo
+                        </button>
+                      )}
+                    </div>
+
+                    {showNewPipelineInput ? (
+                      <div className="relative animate-fade-in-up">
+                        <input
+                          autoFocus
+                          className="w-full border border-blue-400 bg-blue-50/20 p-3 pr-20 rounded-xl text-sm outline-none ring-4 ring-blue-500/10 transition-all placeholder:text-blue-300 text-slate-800 font-bold"
+                          placeholder="Nome (Ex: Black Friday)"
+                          value={newPipelineName}
+                          onChange={e => setNewPipelineName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleCreatePipeline(); }}
+                        />
+                        <div className="absolute right-1 top-1 bottom-1 flex gap-1 p-0.5">
+                          <button onClick={handleCreatePipeline} className="bg-blue-600 text-white px-3 rounded-lg hover:bg-blue-700 transition-all shadow-md active:scale-95"><Check size={16} /></button>
+                          <button onClick={() => { setShowNewPipelineInput(false); }} className="bg-white text-slate-400 border border-slate-200 px-2 rounded-lg hover:text-red-500 hover:border-red-200 transition-colors"><X size={16} /></button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        {pipelines.length === 0 && <div className="absolute inset-x-0 -bottom-6 text-[10px] text-red-400 flex items-center gap-1"><AlertTriangle size={10} /> Crie um funil para continuar</div>}
+                        <select
+                          value={selectedPipelineId}
+                          onChange={e => { setSelectedPipelineId(e.target.value); setSelectedStageId(''); }}
+                          className={`w-full border p-3 rounded-xl bg-white block text-sm focus:ring-2 focus:ring-slate-200 outline-none transition-shadow ${!selectedPipelineId && pipelines.length === 0 ? 'border-red-200 bg-red-50/30 text-red-400' : 'border-slate-200'}`}
+                          disabled={pipelines.length === 0}
+                        >
+                          <option value="">Selecione um Funil...</option>
+                          {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Etapa (Coluna)</label>
+                    <div className="relative">
+                      <select
+                        value={selectedStageId}
+                        onChange={e => setSelectedStageId(e.target.value)}
+                        className="w-full border p-3 rounded-xl bg-white block text-sm focus:ring-2 focus:ring-slate-200 outline-none border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+                        disabled={!selectedPipelineId || showNewPipelineInput}
+                      >
+                        <option value="">Selecione a Etapa...</option>
+                        {selectedPipelineId && selectedPipelineObj?.stages?.map((s: any) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 4 && (<div className="space-y-6">
             <div className="text-center space-y-2"><div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600 mb-4"><Check size={32} /></div><h3 className="text-lg font-bold">Tudo Pronto!</h3><p className="text-slate-600">Sua campanha será enviada para <b>{recipientsData.length}</b> contatos.</p></div>
 
             {/* LISTA FINAL DE REVISÃO */}
@@ -461,11 +613,19 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                 <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} className="bg-transparent w-full outline-none text-slate-900 font-bold text-lg placeholder:text-slate-300" />
               </div>
             </div>
+
+            {/* CRM Summary Review */}
+            {crmTriggerRule !== 'none' && selectedPipelineObj && (
+              <div className="mt-4 p-4 bg-emerald-50/50 rounded-xl border border-emerald-100 text-xs text-emerald-800 flex items-center gap-2">
+                <CheckCircle size={14} className="text-emerald-600" />
+                <span>Automação ativa: <b>{crmTriggerRule === 'on_sent' ? 'Ao Enviar' : 'Ao Responder'}</b> mover para <b>{selectedPipelineObj.name}</b> ➔ <b>{selectedPipelineObj.stages?.find((s: any) => String(s.id) === selectedStageId)?.name}</b></span>
+              </div>
+            )}
           </div>)}
         </div>
         <div className="p-6 border-t border-slate-100 flex justify-between bg-slate-50/50 rounded-b-3xl">
           {step > 1 ? <button onClick={() => setStep(step - 1)} className="px-6 py-2.5 text-slate-500 font-bold hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors">Voltar</button> : <div />}
-          {step < 3 ?
+          {step < 4 ?
             <button onClick={() => setStep(step + 1)} disabled={step === 1 && recipientsData.length === 0} className="bg-slate-900 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-slate-800 hover:scale-[1.02] shadow-lg shadow-slate-900/20 disabled:opacity-50 disabled:shadow-none transition-all">Próximo</button> :
             <button onClick={handleSubmit} disabled={isSubmitting} className="bg-indigo-600 text-white px-8 py-2.5 rounded-xl flex items-center gap-2 font-bold hover:bg-indigo-700 hover:scale-[1.02] shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-70 disabled:grayscale">
               {isSubmitting ? <RefreshCw className="animate-spin" /> : <Send size={18} />}

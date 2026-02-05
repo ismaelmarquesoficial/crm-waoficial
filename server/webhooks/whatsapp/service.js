@@ -64,7 +64,56 @@ const WhatsAppService = {
             [tenantId, contactId, accountId, wamid, body, type, mediaUrl, fileName, timestamp]
         );
 
+        // 3. Verificar Gatilhos de Campanha (On Reply)
+        await WhatsAppService.checkCampaignReply(tenantId, contactId, body);
+
         return insert.rows[0];
+    },
+
+    // 3. Lógica de Atribuição de Campanha
+    async checkCampaignReply(tenantId, contactId, messageBody) {
+        try {
+            // Busca a campanha mais recente enviada para este contato que tenha regra 'on_reply'
+            // Limitamos a campanhas de até 7 dias atrás para relevância
+            const campaignRes = await db.query(`
+                SELECT c.id, c.name, c.crm_pipeline_id, c.crm_stage_id
+                FROM campaign_recipients cr
+                JOIN campaigns c ON cr.campaign_id = c.id
+                WHERE cr.tenant_id = $1 
+                  AND cr.phone = (SELECT phone FROM contacts WHERE id = $2)
+                  AND cr.status = 'sent'
+                  AND c.crm_trigger_rule = 'on_reply'
+                  AND c.status IN ('processing', 'completed')
+                  AND cr.updated_at > NOW() - INTERVAL '7 days'
+                ORDER BY cr.updated_at DESC
+                LIMIT 1
+            `, [tenantId, contactId]);
+
+            if (campaignRes.rows.length === 0) return; // Nenhuma campanha elegível
+
+            const camp = campaignRes.rows[0];
+
+            if (!camp.crm_pipeline_id || !camp.crm_stage_id) return;
+
+            // Verifica se JÁ existe um Deal neste pipeline/stage para este contato (Evitar duplicação)
+            const exists = await db.query(`
+                SELECT id FROM deals 
+                WHERE contact_id = $1 AND pipeline_id = $2 AND stage_id = $3
+            `, [contactId, camp.crm_pipeline_id, camp.crm_stage_id]);
+
+            if (exists.rows.length > 0) return; // Deal já criado
+
+            // CRIA O DEAL
+            await db.query(`
+                INSERT INTO deals (tenant_id, contact_id, pipeline_id, stage_id, title, status, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, 'open', NOW(), NOW())
+            `, [tenantId, contactId, camp.crm_pipeline_id, camp.crm_stage_id, `Resposta: ${camp.name}`]);
+
+            console.log(`🎯 [CRM] Deal 'on_reply' criado para Contato ${contactId} na campanha ${camp.name}`);
+
+        } catch (e) {
+            console.error('Erro ao processar checkCampaignReply:', e);
+        }
     }
 };
 

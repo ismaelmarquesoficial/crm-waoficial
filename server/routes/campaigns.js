@@ -48,7 +48,19 @@ router.get('/:id/recipients', async (req, res) => {
 // Criar Nova Campanha (Recebe Nome, Template, CSV parseado)
 router.post('/', async (req, res) => {
     console.log('📥 [CAMPAIGN] Recebendo requisição de criação...');
-    const { name, channelId, templateId, scheduledAt, recipients } = req.body;
+    const {
+        name,
+        channelId,
+        templateId,
+        scheduledAt,
+        recipients,
+        message,        // Novo
+        mediaUrl,       // Novo
+        mediaType,      // Novo
+        crmPipelineId,  // Novo
+        crmStageId,     // Novo
+        crmTriggerRule  // Novo
+    } = req.body;
 
     console.log(`📋 Dados recebidos: Nome=${name}, Channel=${channelId}, Template=${templateId}, Recipientes=${recipients?.length}`);
     console.log(`🕒 scheduledAt recebido (RAW): ${scheduledAt} | Server Time (Local): ${new Date().toString()} | Server Time (UTC): ${new Date().toISOString()}`);
@@ -71,10 +83,24 @@ router.post('/', async (req, res) => {
 
         const campResult = await client.query(
             `INSERT INTO campaigns 
-             (tenant_id, whatsapp_account_id, template_id, name, status, scheduled_at, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())
+             (tenant_id, whatsapp_account_id, template_id, name, status, scheduled_at, created_at,
+              message, media_url, media_type, crm_pipeline_id, crm_stage_id, crm_trigger_rule)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, $10, $11, $12)
              RETURNING id`,
-            [req.tenantId, channelId, templateId, name, initialStatus, scheduleTime]
+            [
+                req.tenantId,
+                channelId,
+                templateId,
+                name,
+                initialStatus,
+                scheduleTime,
+                message,
+                mediaUrl,
+                mediaType,
+                crmPipelineId || null,
+                crmStageId || null,
+                crmTriggerRule || 'none'
+            ]
         );
         const campaignId = campResult.rows[0].id;
 
