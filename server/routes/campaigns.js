@@ -138,6 +138,8 @@ router.post('/', async (req, res) => {
             await client.query(queryText, params);
         }
 
+        console.log(`✅ [CAMPAIGN CREATE] ID=${campaignId}, Status=${initialStatus}, Recipients=${recipients.length}, AccountID=${channelId}, TemplateID=${templateId}`);
+
         await client.query('COMMIT');
 
         res.status(201).json({

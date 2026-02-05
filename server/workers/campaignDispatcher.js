@@ -33,22 +33,60 @@ const startWorker = (io) => {
 // Verificar e Ativar Campanhas Agendadas
 const checkScheduledCampaigns = async () => {
     try {
-        const utcNow = new Date();
+        // Usar NOW() do PostgreSQL que já está configurado com o timezone correto
+        console.log(`⏰ [SCHEDULER] Verificando campanhas agendadas...`);
+
+        // Primeiro, vamos ver quantas campanhas scheduled existem
+        const allScheduled = await db.query("SELECT id, name, scheduled_at, NOW() as server_time FROM campaigns WHERE status = 'scheduled'");
+        if (allScheduled.rows.length > 0) {
+            console.log(`📋 [SCHEDULER] ${allScheduled.rows.length} campanha(s) agendada(s):`);
+            allScheduled.rows.forEach(c => {
+                const schedTime = new Date(c.scheduled_at);
+                const nowTime = new Date(c.server_time);
+                const diff = (schedTime.getTime() - nowTime.getTime()) / 1000; // diferença em segundos
+                console.log(`   - ID ${c.id} (${c.name}): Agendada para ${c.scheduled_at} | Faltam ${Math.round(diff)}s`);
+            });
+        }
+
+        // Usar NOW() do PostgreSQL em vez de criar Date no Node.js
         const res = await db.query(`
             UPDATE campaigns 
             SET status = 'processing' 
-            WHERE status = 'scheduled' AND scheduled_at <= $1
-            RETURNING id, name
-        `, [utcNow]);
+            WHERE status = 'scheduled' AND scheduled_at <= NOW()
+            RETURNING id, name, scheduled_at
+        `);
+
         if (res.rowCount > 0) {
-            console.log(`⏰ ${res.rowCount} campanha(s) agendada(s) iniciada(s):`, res.rows.map(c => c.name));
+            console.log(`✅ [SCHEDULER] ${res.rowCount} campanha(s) iniciada(s):`);
+            res.rows.forEach(c => {
+                console.log(`   - ID ${c.id} (${c.name}) agendada para ${c.scheduled_at}`);
+            });
         }
     } catch (e) {
-        console.error('Erro no Scheduler:', e);
+        console.error('❌ [SCHEDULER] Erro:', e);
     }
 };
 
 const processBatch = async () => {
+    // DEBUG: Status geral antes de processar
+    try {
+        const statusCheck = await db.query(`
+            SELECT c.id, c.name, c.status, c.whatsapp_account_id, c.template_id,
+                   (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = c.id AND status = 'pending') as pending_count
+            FROM campaigns c
+            WHERE c.status = 'processing'
+        `);
+
+        if (statusCheck.rows.length > 0) {
+            console.log(`📊 [WORKER STATUS] ${statusCheck.rows.length} campanha(s) em PROCESSING:`);
+            statusCheck.rows.forEach(c => {
+                console.log(`   - ID ${c.id} (${c.name}): ${c.pending_count} pendentes | Account: ${c.whatsapp_account_id} | Template: ${c.template_id}`);
+            });
+        }
+    } catch (e) {
+        console.error('Erro no status check:', e);
+    }
+
     // 1. FAIR SHARE QUERY + BLUEPRINT DATA
     // Adicionado header_vars_count e body_vars_count na query
     const query = `
@@ -81,14 +119,41 @@ const processBatch = async () => {
             const debugCheck = await db.query("SELECT id, name, whatsapp_account_id, template_id FROM campaigns WHERE status = 'processing' LIMIT 1");
             if (debugCheck.rows.length > 0) {
                 const c = debugCheck.rows[0];
-                // Verifica se tem items pendentes
-                const pending = await db.query("SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = $1 AND status = 'pending'", [c.id]);
-                // Verifica conta
-                const acc = await db.query("SELECT id FROM whatsapp_accounts WHERE id = $1", [c.whatsapp_account_id]);
-                // Verifica template
-                const tpl = await db.query("SELECT id FROM whatsapp_templates WHERE id = $1", [c.template_id]);
+                console.warn(`⚠️ [WORKER DIAGNOSTIC] Investigando campanha ${c.id} (${c.name})...`);
 
-                console.warn(`⚠️ [WORKER DIAGNOSTIC] Campanha travada (${c.id} - ${c.name}). Pendentes: ${pending.rows[0].count}. AccountValida: ${acc.rows.length > 0}. TemplateValido: ${tpl.rows.length > 0}`);
+                // Verifica se tem items pendentes
+                const pending = await db.query("SELECT COUNT(*) as count FROM campaign_recipients WHERE campaign_id = $1 AND status = 'pending'", [c.id]);
+                console.log(`   📊 Recipients pendentes: ${pending.rows[0].count}`);
+
+                // Verifica conta de WhatsApp
+                const acc = await db.query("SELECT id, instance_name FROM whatsapp_accounts WHERE id = $1", [c.whatsapp_account_id]);
+                if (acc.rows.length === 0) {
+                    console.error(`   ❌ PROBLEMA: whatsapp_account_id=${c.whatsapp_account_id} NÃO EXISTE!`);
+                } else {
+                    console.log(`   ✅ Account OK: ${acc.rows[0].instance_name}`);
+                }
+
+                // Verifica template
+                const tpl = await db.query("SELECT id, name FROM whatsapp_templates WHERE id = $1", [c.template_id]);
+                if (tpl.rows.length === 0) {
+                    console.error(`   ❌ PROBLEMA: template_id=${c.template_id} NÃO EXISTE!`);
+                } else {
+                    console.log(`   ✅ Template OK: ${tpl.rows[0].name}`);
+                }
+
+                // Tenta query sem os JOINs para ver se retorna recipients
+                const testQuery = await db.query(`
+                    SELECT r.id, r.campaign_id 
+                    FROM campaign_recipients r 
+                    WHERE r.campaign_id = $1 AND r.status = 'pending' 
+                    LIMIT 1
+                `, [c.id]);
+
+                if (testQuery.rows.length > 0) {
+                    console.log(`   ✅ Recipients podem ser lidos diretamente`);
+                } else {
+                    console.error(`   ❌ PROBLEMA: Nenhum recipient pendente encontrado!`);
+                }
             }
         }
 
