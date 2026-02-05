@@ -215,6 +215,20 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
    const [isLoading, setIsLoading] = useState(true);
    const [pipelineToDelete, setPipelineToDelete] = useState<number | null>(null);
 
+   const [showNewPipelineModal, setShowNewPipelineModal] = useState(false);
+   const [showNewDealModal, setShowNewDealModal] = useState(false);
+
+   // New Pipeline Form
+   const [newPipelineName, setNewPipelineName] = useState('');
+
+   // New Deal Form
+   const [newDealData, setNewDealData] = useState({
+      name: '',
+      phone: '',
+      value: '',
+      stage_id: ''
+   });
+
    // Load Pipelines
    useEffect(() => {
       const fetchPipelines = async () => {
@@ -358,6 +372,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
             if (activePipelineId === pipelineId) {
                if (newPipelines.length > 0) {
                   setActivePipelineId(newPipelines[0].id);
+                  setStages(newPipelines[0].stages || []);
                } else {
                   setActivePipelineId(null);
                   setStages([]);
@@ -373,6 +388,70 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
          alert('Erro ao excluir pipeline');
       } finally {
          setPipelineToDelete(null);
+      }
+   };
+
+   const handleCreatePipeline = async () => {
+      if (!newPipelineName.trim()) return;
+
+      try {
+         const token = localStorage.getItem('token');
+         const res = await fetch('http://localhost:3001/api/crm/pipelines', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ name: newPipelineName })
+         });
+         const data = await res.json();
+         if (res.ok) {
+            setPipelines([...pipelines, data]);
+            setActivePipelineId(data.id);
+            setStages(data.stages || []);
+            setShowNewPipelineModal(false);
+            setNewPipelineName('');
+         } else {
+            alert(data.error || 'Erro ao criar pipeline');
+         }
+      } catch (err) {
+         console.error(err);
+         alert('Erro ao criar pipeline');
+      }
+   };
+
+   const handleCreateDeal = async () => {
+      if (!newDealData.name || !newDealData.phone || !activePipelineId) {
+         alert('Preencha nome e telefone.');
+         return;
+      }
+
+      // Default to first stage if not selected
+      const stageId = newDealData.stage_id || (stages[0]?.id ? String(stages[0].id) : '');
+      if (!stageId) {
+         alert('Pipeline sem etapas.');
+         return;
+      }
+
+      try {
+         const token = localStorage.getItem('token');
+         const res = await fetch('http://localhost:3001/api/crm/deals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({
+               ...newDealData,
+               pipeline_id: activePipelineId,
+               stage_id: stageId
+            })
+         });
+         const data = await res.json();
+         if (res.ok) {
+            setCards([data, ...cards]); // Add to top
+            setShowNewDealModal(false);
+            setNewDealData({ name: '', phone: '', value: '', stage_id: '' });
+         } else {
+            alert(data.error || 'Erro ao criar deal');
+         }
+      } catch (err) {
+         console.error(err);
+         alert('Erro ao criar deal');
       }
    };
 
@@ -467,6 +546,13 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                      </button>
                   );
                })}
+               <button
+                  onClick={() => setShowNewPipelineModal(true)}
+                  className="px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:bg-white hover:text-blue-600 transition-colors flex items-center"
+                  title="Novo Pipeline"
+               >
+                  <Plus size={14} />
+               </button>
             </div>
 
             {/* Right: Actions */}
@@ -474,7 +560,9 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                <button className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">
                   <Search size={20} />
                </button>
-               <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95 group">
+               <button
+                  onClick={() => setShowNewDealModal(true)}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95 group">
                   <Plus size={18} className="group-hover:rotate-90 transition-transform" />
                   <span className="hidden lg:inline">Novo Deal</span>
                </button>
@@ -566,7 +654,12 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                                     {provided.placeholder}
 
                                     {/* Add Button - only show if not dragging over to keep clean? kept for now */}
-                                    <button className="w-full py-4 border-2 border-dashed border-slate-200/80 rounded-2xl text-slate-400 text-sm font-bold hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 opacity-70 hover:opacity-100 group">
+                                    <button
+                                       onClick={() => {
+                                          setNewDealData(prev => ({ ...prev, stage_id: String(stage.id) }));
+                                          setShowNewDealModal(true);
+                                       }}
+                                       className="w-full py-4 border-2 border-dashed border-slate-200/80 rounded-2xl text-slate-400 text-sm font-bold hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 opacity-70 hover:opacity-100 group">
                                        <div className="p-1 rounded-md bg-slate-100 group-hover:bg-blue-100 transition-colors">
                                           <Plus size={14} />
                                        </div>
@@ -624,6 +717,106 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                            Sim, excluir
                         </button>
                      </div>
+                  </div>
+               </div>
+            </div>
+         )}
+
+         {/* New Pipeline Modal */}
+         {showNewPipelineModal && (
+            <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-sm animate-fade-in flex items-center justify-center p-4">
+               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 animate-scale-in">
+                  <div className="flex justify-between items-center mb-6">
+                     <h2 className="text-xl font-bold text-slate-800">Novo Pipeline</h2>
+                     <button onClick={() => setShowNewPipelineModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600">
+                        <X size={20} />
+                     </button>
+                  </div>
+                  <div className="space-y-4">
+                     <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nome do Pipeline</label>
+                        <input
+                           autoFocus
+                           type="text"
+                           className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
+                           placeholder="Ex: Vendas 2024"
+                           value={newPipelineName}
+                           onChange={e => setNewPipelineName(e.target.value)}
+                        />
+                     </div>
+                     <button
+                        onClick={handleCreatePipeline}
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200 active:scale-95 transition-all"
+                     >
+                        Criar Pipeline
+                     </button>
+                  </div>
+               </div>
+            </div>
+         )}
+
+         {/* New Deal Modal */}
+         {showNewDealModal && (
+            <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-sm animate-fade-in flex items-center justify-center p-4">
+               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 animate-scale-in">
+                  <div className="flex justify-between items-center mb-6">
+                     <h2 className="text-xl font-bold text-slate-800">Novo Negócio</h2>
+                     <button onClick={() => setShowNewDealModal(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600">
+                        <X size={20} />
+                     </button>
+                  </div>
+                  <div className="space-y-4">
+                     <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nome do Contato/Negócio</label>
+                        <input
+                           autoFocus
+                           type="text"
+                           className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
+                           placeholder="Ex: João Silva"
+                           value={newDealData.name}
+                           onChange={e => setNewDealData({ ...newDealData, name: e.target.value })}
+                        />
+                     </div>
+                     <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Telefone (Whatsapp)</label>
+                        <input
+                           type="text"
+                           className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
+                           placeholder="Ex: 5511999999999"
+                           value={newDealData.phone}
+                           onChange={e => setNewDealData({ ...newDealData, phone: e.target.value })}
+                        />
+                     </div>
+                     <div className="grid grid-cols-2 gap-4">
+                        <div>
+                           <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Valor (R$)</label>
+                           <input
+                              type="number"
+                              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
+                              placeholder="0,00"
+                              value={newDealData.value}
+                              onChange={e => setNewDealData({ ...newDealData, value: e.target.value })}
+                           />
+                        </div>
+                        <div>
+                           <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Etapa Inicial</label>
+                           <select
+                              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
+                              value={newDealData.stage_id}
+                              onChange={e => setNewDealData({ ...newDealData, stage_id: e.target.value })}
+                           >
+                              {stages.map(s => (
+                                 <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                           </select>
+                        </div>
+                     </div>
+                     <button
+                        onClick={handleCreateDeal}
+                        className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-lg shadow-slate-300 active:scale-95 transition-all mt-2"
+                     >
+                        Criar Negócio
+                     </button>
                   </div>
                </div>
             </div>

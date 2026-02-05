@@ -137,6 +137,78 @@ router.post('/pipelines', verifyToken, async (req, res) => {
     }
 });
 
+// Criar Novo Deal (Manual)
+router.post('/deals', verifyToken, async (req, res) => {
+    const { name, phone, value, pipeline_id, stage_id } = req.body;
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+    if (!name || !phone || !pipeline_id || !stage_id) {
+        return res.status(400).json({ error: 'Dados incompletos (nome, telefone, pipeline, etapa são obrigatórios).' });
+    }
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Verificar se contato já existe (pelo telefone)
+        let contactId;
+        const contactCheck = await client.query(
+            'SELECT id FROM contacts WHERE phone = $1 AND tenant_id = $2',
+            [phone, tenantId]
+        );
+
+        if (contactCheck.rows.length > 0) {
+            contactId = contactCheck.rows[0].id;
+        } else {
+            // Criar contato
+            const newContact = await client.query(
+                'INSERT INTO contacts (tenant_id, name, phone) VALUES ($1, $2, $3) RETURNING id',
+                [tenantId, name, phone]
+            );
+            contactId = newContact.rows[0].id;
+        }
+
+        // 2. Criar Deal
+        const deal = await client.query(
+            `INSERT INTO deals (tenant_id, contact_id, pipeline_id, stage_id, title, value, status, created_at, updated_at) 
+             VALUES ($1, $2, $3, $4, $5, $6, 'open', NOW(), NOW()) RETURNING *`,
+            [tenantId, contactId, pipeline_id, stage_id, name, value || 0]
+        );
+
+        // 3. (Opcional) Poderia criar task de follow-up etc.
+
+        await client.query('COMMIT');
+
+        // Retornar objeto combinado (deal + contact info para o frontend)
+        const responseData = {
+            ...deal.rows[0],
+            contact_id: contactId,
+            name: name,
+            phone: phone,
+            current_stage_id: stage_id
+        };
+
+        // Emitir evento socket
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`tenant_${tenantId}`).emit('crm_deal_update', {
+                type: 'created',
+                deal: deal.rows[0],
+                pipelineId: pipeline_id
+            });
+        }
+
+        res.status(201).json(responseData);
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Erro ao criar deal:', err);
+        res.status(500).json({ error: 'Erro ao criar negócio: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
 // Atualizar Deal (Mover de Etapa)
 router.put('/deals/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
