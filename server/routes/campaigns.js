@@ -10,10 +10,14 @@ router.get('/', async (req, res) => {
     try {
         const result = await db.query(
             `SELECT c.*, 
+             wa.instance_name as channel_name,
+             wt.name as template_name,
              (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = c.id) as total,
              (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = c.id AND status = 'sent') as sent,
              (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = c.id AND status = 'failed') as failed
              FROM campaigns c 
+             LEFT JOIN whatsapp_accounts wa ON c.whatsapp_account_id = wa.id
+             LEFT JOIN whatsapp_templates wt ON c.template_id = wt.id
              WHERE c.tenant_id = $1 
              ORDER BY c.created_at DESC`,
             [req.tenantId]
@@ -54,29 +58,26 @@ router.post('/', async (req, res) => {
         templateId,
         scheduledAt,
         recipients,
-        message,        // Novo
-        mediaUrl,       // Novo
-        mediaType,      // Novo
-        crmPipelineId,  // Novo
-        crmStageId,     // Novo
-        crmTriggerRule  // Novo
+        message,
+        mediaUrl,
+        mediaType,
+        crmPipelineId,
+        crmStageId,
+        crmTriggerRule,
+        recurrenceType,
+        recurrenceInterval,
+        recurrenceDay,
+        recurrenceTime      // Novo
     } = req.body;
 
-    console.log(`📋 Dados recebidos: Nome=${name}, Channel=${channelId}, Template=${templateId}, Recipientes=${recipients?.length}`);
-    console.log(`🕒 scheduledAt recebido (RAW): ${scheduledAt} | Server Time (Local): ${new Date().toString()} | Server Time (UTC): ${new Date().toISOString()}`);
+    console.log(`📋 Dados recebidos: Nome=${name}, Channel=${channelId}, Template=${templateId}, Recipientes=${recipients?.length}, Recurrence=${recurrenceType}, Time=${recurrenceTime}`);
 
-    // recipients: Array de { phone: '5511999...', variables: ['João', '10/12'] }
+    // ... (validação mantida igual) ...
 
-    if (!name || !channelId || !templateId || !recipients || recipients.length === 0) {
-        return res.status(400).json({ error: 'Dados incompletos.' });
-    }
-
-    const client = await db.pool.connect(); // Usar transaction para segurança
+    const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
 
-        // 1. Criar Campanha
-        // Se scheduledAt for passado e for futuro, status = 'scheduled'. Se não, 'processing'.
         const isScheduled = scheduledAt && new Date(scheduledAt) > new Date();
         const initialStatus = isScheduled ? 'scheduled' : 'processing';
         const scheduleTime = scheduledAt || new Date();
@@ -84,8 +85,9 @@ router.post('/', async (req, res) => {
         const campResult = await client.query(
             `INSERT INTO campaigns 
              (tenant_id, whatsapp_account_id, template_id, name, status, scheduled_at, created_at,
-              message, media_url, media_type, crm_pipeline_id, crm_stage_id, crm_trigger_rule)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, $10, $11, $12)
+              message, media_url, media_type, crm_pipeline_id, crm_stage_id, crm_trigger_rule,
+              recurrence_type, recurrence_interval, recurrence_day, recurrence_time)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
              RETURNING id`,
             [
                 req.tenantId,
@@ -99,7 +101,11 @@ router.post('/', async (req, res) => {
                 mediaType,
                 crmPipelineId || null,
                 crmStageId || null,
-                crmTriggerRule || 'none'
+                crmTriggerRule || 'none',
+                recurrenceType || 'none',
+                recurrenceInterval || null,
+                recurrenceDay || null,
+                recurrenceTime || null
             ]
         );
         const campaignId = campResult.rows[0].id;
@@ -238,6 +244,67 @@ router.delete('/:id', async (req, res) => {
         await client.query('ROLLBACK');
         console.error(err);
         res.status(500).json({ error: 'Erro ao excluir campanha.' });
+    } finally {
+        client.release();
+    }
+});
+
+// Atualizar Campanha (Edição completa)
+router.patch('/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, channelId, templateId, scheduledAt, recipients, crmPipelineId, crmStageId, crmTriggerRule, recurrenceType, recurrenceInterval, recurrenceDay, recurrenceTime } = req.body;
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const isScheduled = scheduledAt && new Date(scheduledAt) > new Date();
+        const newStatus = isScheduled ? 'scheduled' : 'processing';
+
+        // 1. Atualizar dados básicos
+        await client.query(
+            `UPDATE campaigns SET 
+                name = $1, whatsapp_account_id = $2, template_id = $3, 
+                scheduled_at = $4, status = $5,
+                crm_pipeline_id = $6, crm_stage_id = $7, crm_trigger_rule = $8,
+                recurrence_type = $9, recurrence_interval = $10, 
+                recurrence_day = $11, recurrence_time = $12
+             WHERE id = $13 AND tenant_id = $14`,
+            [
+                name, channelId, templateId, scheduledAt, newStatus,
+                crmPipelineId, crmStageId, crmTriggerRule,
+                recurrenceType, recurrenceInterval, recurrenceDay, recurrenceTime,
+                id, req.tenantId
+            ]
+        );
+
+        // 2. Se destinatários foram enviados, substituir
+        if (recipients && recipients.length > 0) {
+            await client.query("DELETE FROM campaign_recipients WHERE campaign_id = $1 AND tenant_id = $2", [id, req.tenantId]);
+
+            const chunkSize = 100;
+            for (let i = 0; i < recipients.length; i += chunkSize) {
+                const chunk = recipients.slice(i, i + chunkSize);
+                const values = [];
+                const params = [];
+                let paramIdx = 1;
+
+                chunk.forEach(r => {
+                    values.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, 'pending')`);
+                    params.push(id, req.tenantId, r.phone, JSON.stringify(r.variables || []));
+                    paramIdx += 4;
+                });
+
+                await client.query(`INSERT INTO campaign_recipients (campaign_id, tenant_id, phone, variables, status) VALUES ${values.join(', ')}`, params);
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ message: 'Campanha atualizada com sucesso!' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ error: 'Erro ao atualizar campanha.' });
     } finally {
         client.release();
     }

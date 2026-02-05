@@ -244,6 +244,49 @@ const checkCompletedCampaigns = async () => {
             // Se não tem pendentes, marca como completed/failed
             await db.query("UPDATE campaigns SET status = $1 WHERE id = $2", [finalStatus, camp.id]);
 
+            // --- LÓGICA DE RECORRÊNCIA ---
+            const fullCamp = await db.query("SELECT * FROM campaigns WHERE id = $1", [camp.id]);
+            const c = fullCamp.rows[0];
+
+            if (c.recurrence_type && c.recurrence_type !== 'none') {
+                let nextDate = new Date(c.scheduled_at);
+                const interval = c.recurrence_interval || 1;
+
+                if (c.recurrence_type === 'daily') {
+                    nextDate.setDate(nextDate.getDate() + interval);
+                } else if (c.recurrence_type === 'weekly') {
+                    nextDate.setDate(nextDate.getDate() + (7 * interval));
+                    if (c.recurrence_day !== null) {
+                        const currentDay = nextDate.getDay();
+                        const diff = c.recurrence_day - currentDay;
+                        nextDate.setDate(nextDate.getDate() + diff);
+                    }
+                } else if (c.recurrence_type === 'monthly') {
+                    nextDate.setMonth(nextDate.getMonth() + interval);
+                    if (c.recurrence_day !== null) {
+                        nextDate.setDate(c.recurrence_day);
+                    }
+                }
+
+                // Aplicar horário específico se definido
+                if (c.recurrence_time) {
+                    const [hours, minutes, seconds] = c.recurrence_time.split(':');
+                    nextDate.setHours(parseInt(hours), parseInt(minutes), parseInt(seconds || 0), 0);
+                }
+
+                console.log(`🔄 [WORKER] Reagendando campanha recorrente ${c.id} (${c.name}) para ${nextDate.toISOString()}`);
+
+                // Reagenda a campanha e reseta os contadores dos destinatários
+                await db.query(
+                    "UPDATE campaigns SET status = 'scheduled', scheduled_at = $1 WHERE id = $2",
+                    [nextDate, c.id]
+                );
+                await db.query(
+                    "UPDATE campaign_recipients SET status = 'pending', error_log = NULL, updated_at = NOW() WHERE campaign_id = $1",
+                    [c.id]
+                );
+            }
+
             // Avisa o Frontend que acabou!
             if (ioInstance) {
                 ioInstance.to(`tenant_${camp.tenant_id}`).emit('campaign_completed', {
