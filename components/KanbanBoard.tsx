@@ -599,7 +599,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                </button>
                <button
                   onClick={() => setShowNewDealModal(true)}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95 group">
+                  className="flex items-center gap-2 bg-brand-gradient hover:contrast-125 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95 group">
                   <Plus size={18} className="group-hover:rotate-90 transition-transform" />
                   <span className="hidden lg:inline">Novo Deal</span>
                </button>
@@ -608,7 +608,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
 
          {/* Board Content */}
          <DragDropContext onDragEnd={onDragEnd}>
-            <div className="flex-1 overflow-x-auto overflow-y-hidden p-8 bg-slate-50/50" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
+            <div className="flex-1 overflow-x-auto overflow-y-hidden p-8 bg-slate-50">
                <div className="flex h-full gap-8 min-w-max pb-4">
                   {stages.map(stage => {
                      const stageCards = cards.filter(c => String(c.current_stage_id) === String(stage.id));
@@ -617,25 +617,25 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                      return (
                         <div key={stage.id} className="w-80 flex flex-col h-full group/col">
                            {/* Column Header */}
-                           <div className="flex flex-col mb-5 px-1">
-                              <div className="flex justify-between items-center mb-3">
-                                 <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide flex items-center gap-2">
+                           <div className="flex flex-col mb-6 px-1">
+                              <div className="flex justify-between items-center mb-4">
+                                 <h3 className="font-bold text-slate-800 text-sm tracking-tight flex items-center gap-2">
                                     <div
-                                       className="w-3 h-3 rounded-full shadow-sm ring-2 ring-white"
+                                       className="w-2 h-2 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.2)] ring-1 ring-white"
                                        style={{ backgroundColor: stage.color?.startsWith('#') ? stage.color : '#cbd5e1' }}
                                     />
-                                    {stage.name}
+                                    <span className="text-base font-bold">{stage.name}</span>
                                  </h3>
-                                 <span className="bg-white border border-slate-200 text-slate-500 text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-sm">
+                                 <div className="bg-slate-100 text-slate-400 text-[11px] font-bold px-3 py-1 rounded-full shadow-inner border border-slate-200/50">
                                     {stageCards.length}
-                                 </span>
+                                 </div>
                               </div>
-                              <div className="h-1 w-full bg-slate-200/50 rounded-full overflow-hidden">
+                              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                                  <div
-                                    className="h-full rounded-full opacity-80"
+                                    className="h-full rounded-full opacity-60 transition-all duration-500"
                                     style={{
                                        width: '100%',
-                                       backgroundColor: stage.color?.startsWith('#') ? stage.color : '#cbd5e1'
+                                       backgroundImage: `linear-gradient(90deg, ${stage.color?.startsWith('#') ? stage.color : '#cbd5e1'}, rgba(255,255,255,0.5))`
                                     }}
                                  />
                               </div>
@@ -659,29 +659,36 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                                                 {...provided.dragHandleProps}
                                                 onClick={() => setSelectedContact(card)}
                                                 style={{ ...provided.draggableProps.style }}
-                                                className={`bg-white p-5 rounded-2xl border border-transparent shadow-[0_2px_12px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_12px_24px_-8px_rgba(0,0,0,0.12)] hover:border-blue-100 transition-all duration-300 cursor-pointer group relative overflow-hidden ring-1 ring-slate-100 ${snapshot.isDragging ? 'shadow-2xl ring-2 ring-blue-400 rotate-2' : ''}`}
+                                                className={`bg-white rounded-[24px] overflow-hidden relative shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] border border-slate-200 hover:border-blue-300 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-300 cursor-pointer group ${snapshot.isDragging ? 'shadow-2xl ring-2 ring-blue-400 rotate-2 scale-105 z-50' : ''}`}
                                              >
-                                                <div className="flex justify-between items-start mb-3">
-                                                   <div className="flex items-center gap-3">
-                                                      <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 font-bold text-sm border border-slate-100 shadow-inner">
-                                                         {card.profile_pic_url ? <img src={card.profile_pic_url} className="w-full h-full rounded-full object-cover" /> : (card.name?.[0] || '?')}
-                                                      </div>
-                                                      <div>
-                                                         <h4 className="font-bold text-slate-800 text-sm leading-tight">{card.name}</h4>
-                                                         <p className="text-[10px] uppercase font-bold text-slate-400 mt-1 tracking-wider">{card.title || 'Oportunidade'}</p>
-                                                      </div>
-                                                   </div>
-                                                </div>
+                                                {/* Gradient Top Decor */}
+                                                <div
+                                                   className="h-1.5 w-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 absolute top-0 left-0 bg-gradient-to-r from-blue-500 via-purple-500 to-emerald-400"
+                                                />
 
-                                                <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-50">
-                                                   <div className="flex items-center gap-1.5 text-slate-600 font-bold text-xs bg-slate-50 px-2.5 py-1.5 rounded-lg">
-                                                      <DollarSign size={12} className="text-slate-400" />
-                                                      {card.value ? parseFloat(card.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ -'}
+                                                <div className="p-6">
+                                                   <div className="flex justify-between items-start mb-4">
+                                                      <div className="flex items-center gap-4">
+                                                         <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-500 font-bold text-sm border border-slate-100 shadow-inner group-hover:scale-105 transition-transform">
+                                                            {card.profile_pic_url ? <img src={card.profile_pic_url} className="w-full h-full rounded-2xl object-cover" /> : (card.name?.[0] || '?')}
+                                                         </div>
+                                                         <div>
+                                                            <h4 className="font-bold text-slate-800 text-base leading-tight group-hover:text-blue-600 transition-colors">{card.name}</h4>
+                                                            <p className="text-[11px] uppercase font-bold text-slate-400 mt-1 tracking-wider">{card.title || 'Oportunidade'}</p>
+                                                         </div>
+                                                      </div>
                                                    </div>
-                                                   <div className="flex-1 text-right">
-                                                      <span className="text-[10px] text-slate-400 font-medium flex items-center justify-end gap-1">
-                                                         <Clock size={10} /> {new Date(card.created_at).toLocaleDateString()}
-                                                      </span>
+
+                                                   <div className="flex items-center gap-3 mt-5 pt-4 border-t border-slate-50">
+                                                      <div className="flex items-center gap-1.5 text-slate-600 font-bold text-xs bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 group-hover:border-blue-100 group-hover:bg-blue-50/30 transition-colors">
+                                                         <DollarSign size={14} className="text-slate-400 stroke-[2]" />
+                                                         {card.value ? parseFloat(card.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ -'}
+                                                      </div>
+                                                      <div className="flex-1 text-right">
+                                                         <span className="text-[11px] text-slate-400 font-medium flex items-center justify-end gap-1.5">
+                                                            <Clock size={12} className="stroke-[2]" /> {new Date(card.created_at).toLocaleDateString()}
+                                                         </span>
+                                                      </div>
                                                    </div>
                                                 </div>
                                              </div>
@@ -696,9 +703,9 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                                           setNewDealData(prev => ({ ...prev, stage_id: String(stage.id) }));
                                           setShowNewDealModal(true);
                                        }}
-                                       className="w-full py-4 border-2 border-dashed border-slate-200/80 rounded-2xl text-slate-400 text-sm font-bold hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 opacity-70 hover:opacity-100 group">
-                                       <div className="p-1 rounded-md bg-slate-100 group-hover:bg-blue-100 transition-colors">
-                                          <Plus size={14} />
+                                       className="w-full py-4 border-2 border-dashed border-slate-200/80 rounded-[20px] text-slate-400 text-sm font-bold hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-3 opacity-60 hover:opacity-100 group mt-2">
+                                       <div className="w-8 h-8 rounded-full bg-slate-100 group-hover:bg-blue-100 transition-colors flex items-center justify-center">
+                                          <Plus size={16} className="stroke-[2]" />
                                        </div>
                                        Adicionar Negócio
                                     </button>
@@ -721,12 +728,12 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                      {!isAddingStage ? (
                         <button
                            onClick={() => setIsAddingStage(true)}
-                           className="flex-1 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:text-blue-500 hover:border-blue-300 hover:bg-blue-50/30 transition-all gap-3 group"
+                           className="flex-1 border-2 border-dashed border-slate-200 rounded-[24px] flex flex-col items-center justify-center text-slate-300 hover:text-blue-500 hover:border-blue-300 hover:bg-blue-50/30 transition-all gap-4 group hover:shadow-lg hover:shadow-blue-500/5 ring-1 ring-transparent hover:ring-blue-200"
                         >
-                           <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                              <Plus size={24} />
+                           <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-blue-100 group-hover:text-blue-600 transition-all duration-300 group-hover:scale-110 shadow-sm border border-slate-100">
+                              <Plus size={32} className="stroke-[1.5]" />
                            </div>
-                           <span className="font-bold text-sm">Adicionar Etapa</span>
+                           <span className="font-bold text-sm tracking-tight">Adicionar Etapa</span>
                         </button>
                      ) : (
                         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xl animate-scale-in">
@@ -813,19 +820,22 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
          {/* New Pipeline Modal - Premium Modern Design */}
          {showNewPipelineModal && (
             <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-md animate-fade-in flex items-center justify-center p-4">
-               <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-scale-in border border-white/20 ring-1 ring-black/5">
+               <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-scale-in border border-white/20 ring-1 ring-black/5 relative">
+
+                  {/* Gradient Top Line */}
+                  <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 via-blue-400 to-emerald-400 absolute top-0 left-0 z-10" />
 
                   {/* Modal Header */}
-                  <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
+                  <div className="px-10 py-8 border-b border-slate-100 flex justify-between items-center bg-white">
                      <div>
-                        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Novo Pipeline</h2>
-                        <p className="text-sm text-slate-400 font-medium mt-1">Configure seu funil de vendas personalizado</p>
+                        <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Novo Pipeline</h2>
+                        <p className="text-base text-slate-400 font-medium mt-1">Configure seu funil de vendas personalizado</p>
                      </div>
                      <button
                         onClick={() => setShowNewPipelineModal(false)}
-                        className="p-2.5 hover:bg-slate-100/80 rounded-full text-slate-400 hover:text-red-500 transition-all active:scale-95"
+                        className="p-3 hover:bg-slate-50 rounded-full text-slate-300 hover:text-slate-500 transition-all active:scale-95"
                      >
-                        <X size={20} className="stroke-[2.5]" />
+                        <X size={24} className="stroke-[2]" />
                      </button>
                   </div>
 
@@ -833,20 +843,20 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                   <div className="p-8 space-y-8 bg-slate-50/30">
 
                      {/* Pipeline Name Section */}
-                     <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 block ml-1">Nome do Pipeline</label>
+                     <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Nome do Pipeline</label>
                         <div className="relative group">
+                           <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                              <LayoutGrid size={20} className="stroke-[2]" />
+                           </div>
                            <input
                               autoFocus
                               type="text"
-                              className="w-full pl-5 pr-5 py-4 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-lg text-slate-700 placeholder:text-slate-300 group-hover:border-slate-200"
+                              className="w-full pl-12 pr-5 py-4 bg-white border border-slate-200 rounded-[20px] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-lg text-slate-700 placeholder:text-slate-300 placeholder:font-medium shadow-sm"
                               placeholder="Ex: Processo Comercial B2B"
                               value={newPipelineName}
                               onChange={e => setNewPipelineName(e.target.value)}
                            />
-                           <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none">
-                              <LayoutGrid size={20} />
-                           </div>
                         </div>
                      </div>
 
@@ -856,9 +866,9 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Etapas do Funil</label>
                            <button
                               onClick={() => setNewPipelineStages([...newPipelineStages, { name: '', color: '#cbd5e1' }])}
-                              className="text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                              className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200/50 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 active:scale-95 transition-all"
                            >
-                              <Plus size={16} className="stroke-[3]" /> Adicionar Etapa
+                              <Plus size={16} className="stroke-[2.5]" /> Adicionar Etapa
                            </button>
                         </div>
 
@@ -894,7 +904,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                                  {/* Stage Name Input */}
                                  <input
                                     type="text"
-                                    className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-sm font-bold text-slate-700 transition-all placeholder:text-slate-300 placeholder:font-medium"
+                                    className="flex-1 px-5 py-3.5 bg-white border border-slate-200 rounded-2xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-sm font-bold text-slate-700 transition-all placeholder:text-slate-300 placeholder:font-medium shadow-sm hover:border-blue-200"
                                     placeholder={`Nome da Etapa ${i + 1}`}
                                     value={stage.name}
                                     onChange={e => {
@@ -926,10 +936,10 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                      <div className="pt-2">
                         <button
                            onClick={handleCreatePipeline}
-                           className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-xl shadow-slate-300 active:scale-[0.98] transition-all flex items-center justify-center gap-3 text-base"
+                           className="btn-primary"
                         >
                            <span>Criar Pipeline Personalizado</span>
-                           <ArrowRight size={20} className="text-slate-400" />
+                           <ArrowRight size={20} className="text-white/80" />
                         </button>
                      </div>
 
@@ -942,21 +952,24 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
          {/* New Deal Modal - Premium Modern Design */}
          {showNewDealModal && (
             <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-md animate-fade-in flex items-center justify-center p-4">
-               <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-scale-in border border-white/20 ring-1 ring-black/5">
+               <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-scale-in border border-white/20 ring-1 ring-black/5 relative">
+
+                  {/* Gradient Top Line */}
+                  <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 via-blue-400 to-emerald-400 absolute top-0 left-0 z-10" />
 
                   {/* Modal Header */}
-                  <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
-                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
-                           <DollarSign size={24} />
+                  <div className="px-10 py-8 border-b border-slate-100 flex justify-between items-center bg-white">
+                     <div className="flex items-center gap-4">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100/50 shadow-sm">
+                           <DollarSign size={28} className="stroke-[1.5]" />
                         </div>
                         <div>
-                           <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Novo Negócio</h2>
-                           <p className="text-sm text-slate-400 font-medium">Adicione uma nova oportunidade ao pipeline</p>
+                           <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Novo Negócio</h2>
+                           <p className="text-base text-slate-400 font-medium mt-1">Adicione uma nova oportunidade ao pipeline</p>
                         </div>
                      </div>
-                     <button onClick={() => setShowNewDealModal(false)} className="p-2.5 hover:bg-slate-100/80 rounded-full text-slate-400 hover:text-red-500 transition-all active:scale-95">
-                        <X size={20} className="stroke-[2.5]" />
+                     <button onClick={() => setShowNewDealModal(false)} className="p-3 hover:bg-slate-50 rounded-full text-slate-300 hover:text-slate-500 transition-all active:scale-95">
+                        <X size={24} className="stroke-[2]" />
                      </button>
                   </div>
 
@@ -967,13 +980,13 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                      <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Nome do Cliente / Oportunidade</label>
                         <div className="relative group">
-                           <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
-                              <LayoutGrid size={20} />
+                           <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                              <LayoutGrid size={20} className="stroke-[2]" />
                            </div>
                            <input
                               autoFocus
                               type="text"
-                              className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-lg text-slate-700 placeholder:text-slate-300 placeholder:font-medium"
+                              className="w-full pl-12 pr-5 py-4 bg-white border border-slate-200 rounded-[20px] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-lg text-slate-700 placeholder:text-slate-300 placeholder:font-medium shadow-sm"
                               placeholder="Ex: João Silva - Projeto Site"
                               value={newDealData.name}
                               onChange={e => setNewDealData({ ...newDealData, name: e.target.value })}
@@ -986,12 +999,12 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                         <div className="space-y-2">
                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">WhatsApp</label>
                            <div className="relative group">
-                              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-green-500 transition-colors">
-                                 <Phone size={20} />
+                              <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-green-500 transition-colors">
+                                 <Phone size={20} className="stroke-[2]" />
                               </div>
                               <input
                                  type="text"
-                                 className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700"
+                                 className="w-full pl-12 pr-5 py-4 bg-white border border-slate-200 rounded-[20px] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700 shadow-sm"
                                  placeholder="5511999999999"
                                  value={newDealData.phone}
                                  onChange={e => setNewDealData({ ...newDealData, phone: e.target.value })}
@@ -1002,12 +1015,12 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                         <div className="space-y-2">
                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Valor Estimado</label>
                            <div className="relative group">
-                              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                              <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors">
                                  <span className="font-bold text-sm">R$</span>
                               </div>
                               <input
                                  type="number"
-                                 className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-bold text-slate-700"
+                                 className="w-full pl-12 pr-5 py-4 bg-white border border-slate-200 rounded-[20px] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-bold text-slate-700 shadow-sm"
                                  placeholder="0,00"
                                  value={newDealData.value}
                                  onChange={e => setNewDealData({ ...newDealData, value: e.target.value })}
@@ -1021,7 +1034,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Etapa Inicial</label>
                         <div className="relative">
                            <select
-                              className="w-full pl-4 pr-10 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700 appearance-none cursor-pointer hover:border-blue-300"
+                              className="w-full pl-5 pr-10 py-4 bg-white border border-slate-200 rounded-[20px] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-700 appearance-none cursor-pointer hover:border-blue-300 shadow-sm"
                               value={newDealData.stage_id}
                               onChange={e => setNewDealData({ ...newDealData, stage_id: e.target.value })}
                            >
@@ -1029,8 +1042,8 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                                  <option key={s.id} value={s.id}>{s.name}</option>
                               ))}
                            </select>
-                           <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                              <ArrowRight size={16} className="rotate-90" />
+                           <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                              <ArrowRight size={16} className="rotate-90 stroke-[2]" />
                            </div>
                         </div>
                      </div>
@@ -1039,7 +1052,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onNavigateToChat }) => {
                      <div className="pt-4">
                         <button
                            onClick={handleCreateDeal}
-                           className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-xl shadow-slate-300 active:scale-[0.98] transition-all flex items-center justify-center gap-3 text-base group"
+                           className="btn-primary group"
                         >
                            <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
                            Criar Novo Negócio
