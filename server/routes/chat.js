@@ -34,7 +34,24 @@ router.get('/', async (req, res) => {
                 (SELECT message FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message,
                 (SELECT type FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message_type,
                 (SELECT timestamp FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message_time,
-                (SELECT count(*) FROM chat_logs WHERE contact_id = c.id AND direction = 'INBOUND' AND status = 'unread') as unread_count
+                (SELECT count(*) FROM chat_logs WHERE contact_id = c.id AND direction = 'INBOUND' AND status = 'unread') as unread_count,
+                (
+                    SELECT COALESCE(json_agg(
+                        json_build_object(
+                            'id', d.id,
+                            'title', d.title,
+                            'pipeline_id', d.pipeline_id,
+                            'pipeline_name', p.name,
+                            'stage_id', d.stage_id,
+                            'stage_name', ps.name,
+                            'stage_color', ps.color
+                        )
+                    ), '[]')
+                    FROM deals d
+                    LEFT JOIN pipelines p ON d.pipeline_id = p.id
+                    LEFT JOIN pipeline_stages ps ON d.stage_id = ps.id
+                    WHERE d.contact_id = c.id
+                ) as deals
             FROM contacts c
             ${whereClause}
             ORDER BY c.last_interaction DESC NULLS LAST
@@ -256,6 +273,70 @@ router.delete('/contacts/:contactId/tags/:tag', async (req, res) => {
     } catch (err) {
         console.error('Erro ao remover tag:', err);
         res.status(500).json({ error: 'Erro ao remover tag' });
+    }
+});
+
+// Criar contato manualmente
+router.post('/contacts', async (req, res) => {
+    try {
+        const { name, phone, email, tags } = req.body;
+        const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+        if (!name || !phone) {
+            return res.status(400).json({ error: 'Nome e telefone são obrigatórios' });
+        }
+
+        // Verificar se já existe
+        const check = await db.query('SELECT id FROM contacts WHERE phone = $1 AND tenant_id = $2', [phone, tenantId]);
+        if (check.rows.length > 0) {
+            return res.status(400).json({ error: 'Já existe um contato com este telefone' });
+        }
+
+        const result = await db.query(
+            'INSERT INTO contacts (tenant_id, name, phone, email, tags, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *',
+            [tenantId, name, phone, email || null, tags || []]
+        );
+
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Erro ao criar contato:', err);
+        res.status(500).json({ error: 'Erro ao criar contato' });
+    }
+});
+
+// Excluir contato e dados relacionados
+router.delete('/contacts/:contactId', async (req, res) => {
+    const { contactId } = req.params;
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Verificar se o contato pertence ao tenant
+        const check = await client.query('SELECT id FROM contacts WHERE id = $1 AND tenant_id = $2', [contactId, tenantId]);
+        if (check.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Contato não encontrado' });
+        }
+
+        // 2. Excluir logs de chat
+        await client.query('DELETE FROM chat_logs WHERE contact_id = $1', [contactId]);
+
+        // 3. Excluir deals (negócios)
+        await client.query('DELETE FROM deals WHERE contact_id = $1', [contactId]);
+
+        // 4. Excluir o contato
+        await client.query('DELETE FROM contacts WHERE id = $1', [contactId]);
+
+        await client.query('COMMIT');
+        res.json({ message: 'Contato e todos os dados associados foram excluídos com sucesso' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Erro ao excluir contato:', err);
+        res.status(500).json({ error: 'Erro ao excluir contato' });
+    } finally {
+        client.release();
     }
 });
 

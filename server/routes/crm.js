@@ -89,6 +89,32 @@ router.get('/pipelines/:pipelineId/cards', verifyToken, async (req, res) => {
     }
 });
 
+// Buscar Negócios de um Contato Específico
+router.get('/contacts/:contactId/deals', verifyToken, async (req, res) => {
+    const { contactId } = req.params;
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+    try {
+        const query = `
+            SELECT 
+                d.id, d.title, d.value, d.status, d.created_at,
+                d.pipeline_id, p.name as pipeline_name,
+                d.stage_id, ps.name as stage_name, ps.color as stage_color
+            FROM deals d
+            JOIN pipelines p ON d.pipeline_id = p.id
+            JOIN pipeline_stages ps ON d.stage_id = ps.id
+            WHERE d.contact_id = $1 AND d.tenant_id = $2
+            ORDER BY d.created_at DESC
+        `;
+
+        const result = await db.query(query, [contactId, tenantId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Erro ao buscar negócios do contato:', err);
+        res.status(500).json({ error: 'Erro ao buscar negócios' });
+    }
+});
+
 // Criar Pipeline Rápido
 router.post('/pipelines', verifyToken, async (req, res) => {
     const { name } = req.body;
