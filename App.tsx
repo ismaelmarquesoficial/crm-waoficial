@@ -95,7 +95,7 @@ const App: React.FC = () => {
       case 'chat': return <ChatInterface initialContactId={chatContactId} />;
       case 'crm': return <KanbanBoard onNavigateToChat={handleNavigateToChat} />;
       case 'campaigns': return <Campaigns />;
-      case 'contacts': return <ContactsPage />;
+      case 'contacts': return <ContactsPage onNavigateToChat={handleNavigateToChat} />;
       case 'settings': return <IntegrationScreen />;
       default: return <Dashboard />;
     }

@@ -12,8 +12,11 @@ interface Contact {
     last_interaction?: string;
     unread_count?: number;
 }
+interface ContactsPageProps {
+    onNavigateToChat?: (contactId: string) => void;
+}
 
-const ContactsPage = () => {
+const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -77,8 +80,12 @@ const ContactsPage = () => {
     };
 
     const handleOpenChat = (contactId: string) => {
-        // Redirecionar para o chat ou abrir o chat com este contato
-        window.location.href = `/chat?contactId=${contactId}`;
+        if (onNavigateToChat) {
+            onNavigateToChat(contactId);
+        } else {
+            // Fallback caso a prop não seja passada
+            window.location.href = `/chat?contactId=${contactId}`;
+        }
     };
 
     return (
@@ -142,8 +149,8 @@ const ContactsPage = () => {
                                 <button
                                     onClick={() => setSelectedTagFilter(null)}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${!selectedTagFilter
-                                            ? 'bg-purple-600 text-white shadow-md'
-                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        ? 'bg-purple-600 text-white shadow-md'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                         }`}
                                 >
                                     Todos
@@ -153,8 +160,8 @@ const ContactsPage = () => {
                                         key={tag}
                                         onClick={() => setSelectedTagFilter(tag)}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${selectedTagFilter === tag
-                                                ? 'bg-purple-600 text-white shadow-md'
-                                                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                            ? 'bg-purple-600 text-white shadow-md'
+                                            : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
                                             }`}
                                     >
                                         {tag}
