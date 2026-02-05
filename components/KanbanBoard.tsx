@@ -15,6 +15,7 @@ import {
    LayoutGrid,
    List
 } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Contact, PipelineStage } from '../types';
 import { io } from 'socket.io-client';
 
@@ -179,13 +180,29 @@ const ContactDrawer = ({ contact, stages, onClose, onMoveStage }: { contact: any
    );
 };
 
+interface Deal {
+   id: number | string;
+   current_stage_id: number | string;
+   name: string;
+   description?: string;
+   value?: string;
+   probability?: number;
+   company?: string;
+   phone?: string;
+   email?: string;
+   profile_pic_url?: string;
+   title?: string;
+   created_at: string;
+   [key: string]: any;
+}
+
 const KanbanBoard: React.FC = () => {
    const [pipelines, setPipelines] = useState<any[]>([]);
    const [activePipelineId, setActivePipelineId] = useState<number | null>(null);
    const [stages, setStages] = useState<PipelineStage[]>([]);
-   const [cards, setCards] = useState<any[]>([]);
+   const [cards, setCards] = useState<Deal[]>([]);
 
-   const [selectedContact, setSelectedContact] = useState<any>(null);
+   const [selectedContact, setSelectedContact] = useState<Deal | null>(null);
    const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
    const [isLoading, setIsLoading] = useState(true);
 
@@ -311,6 +328,52 @@ const KanbanBoard: React.FC = () => {
       }
    };
 
+   const onDragEnd = async (result: DropResult) => {
+      const { destination, source, draggableId } = result;
+
+      // Se não houve destino ou se o destino é o mesmo
+      if (!destination) return;
+      if (
+         destination.droppableId === source.droppableId &&
+         destination.index === source.index
+      ) {
+         return;
+      }
+
+      // Encontrar o card
+      const cardId = draggableId;
+      const newStageId = destination.droppableId;
+      const card = cards.find(c => String(c.id) === String(cardId));
+
+      if (!card) return;
+
+      // 1. Optimistic Update
+      const updatedCard = { ...card, current_stage_id: newStageId };
+
+      setCards(prevCards =>
+         prevCards.map(c =>
+            String(c.id) === String(cardId) ? updatedCard : c
+         )
+      );
+
+      // 2. Persist to Backend
+      try {
+         const token = localStorage.getItem('token');
+         await fetch(`http://localhost:3001/api/crm/deals/${cardId}`, {
+            method: 'PUT',
+            headers: {
+               'Content-Type': 'application/json',
+               'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ stage_id: newStageId })
+         });
+      } catch (err) {
+         console.error('Erro ao mover card via drag-and-drop', err);
+         alert('Erro ao mover o card.');
+         // Revert on error could be implemented here
+      }
+   };
+
    return (
       <div className="h-full flex flex-col bg-white relative">
          {/* Header Toolbar */}
@@ -362,86 +425,105 @@ const KanbanBoard: React.FC = () => {
          </div>
 
          {/* Board Content */}
-         <div className="flex-1 overflow-x-auto overflow-y-hidden p-8 bg-slate-50/50" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
-            <div className="flex h-full gap-8 min-w-max pb-4">
-               {stages.map(stage => {
-                  const stageCards = cards.filter(c => c.current_stage_id == stage.id);
-                  const stageValue = getTotalValue(stage.id);
+         <DragDropContext onDragEnd={onDragEnd}>
+            <div className="flex-1 overflow-x-auto overflow-y-hidden p-8 bg-slate-50/50" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
+               <div className="flex h-full gap-8 min-w-max pb-4">
+                  {stages.map(stage => {
+                     const stageCards = cards.filter(c => String(c.current_stage_id) === String(stage.id));
+                     const stageValue = getTotalValue(stage.id as string);
 
-                  return (
-                     <div key={stage.id} className="w-80 flex flex-col h-full group/col">
-                        {/* Column Header */}
-                        <div className="flex flex-col mb-5 px-1">
-                           <div className="flex justify-between items-center mb-3">
-                              <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide flex items-center gap-2">
+                     return (
+                        <div key={stage.id} className="w-80 flex flex-col h-full group/col">
+                           {/* Column Header */}
+                           <div className="flex flex-col mb-5 px-1">
+                              <div className="flex justify-between items-center mb-3">
+                                 <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide flex items-center gap-2">
+                                    <div
+                                       className="w-3 h-3 rounded-full shadow-sm ring-2 ring-white"
+                                       style={{ backgroundColor: stage.color?.startsWith('#') ? stage.color : '#cbd5e1' }}
+                                    />
+                                    {stage.name}
+                                 </h3>
+                                 <span className="bg-white border border-slate-200 text-slate-500 text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-sm">
+                                    {stageCards.length}
+                                 </span>
+                              </div>
+                              <div className="h-1 w-full bg-slate-200/50 rounded-full overflow-hidden">
                                  <div
-                                    className="w-3 h-3 rounded-full shadow-sm ring-2 ring-white"
-                                    style={{ backgroundColor: stage.color?.startsWith('#') ? stage.color : '#cbd5e1' }}
+                                    className="h-full rounded-full opacity-80"
+                                    style={{
+                                       width: '100%',
+                                       backgroundColor: stage.color?.startsWith('#') ? stage.color : '#cbd5e1'
+                                    }}
                                  />
-                                 {stage.name}
-                              </h3>
-                              <span className="bg-white border border-slate-200 text-slate-500 text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-sm">
-                                 {stageCards.length}
-                              </span>
-                           </div>
-                           <div className="h-1 w-full bg-slate-200/50 rounded-full overflow-hidden">
-                              <div
-                                 className="h-full rounded-full opacity-80"
-                                 style={{
-                                    width: '100%',
-                                    backgroundColor: stage.color?.startsWith('#') ? stage.color : '#cbd5e1'
-                                 }}
-                              />
-                           </div>
-                        </div>
-
-                        {/* Cards Container */}
-                        <div className="flex-1 overflow-y-auto space-y-4 pr-2 pb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                           {stageCards.map(card => (
-                              <div
-                                 key={card.id}
-                                 onClick={() => setSelectedContact(card)}
-                                 className="bg-white p-5 rounded-2xl border border-transparent shadow-[0_2px_12px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_12px_24px_-8px_rgba(0,0,0,0.12)] hover:border-blue-100 hover:-translate-y-1 transition-all duration-300 cursor-pointer group relative overflow-hidden ring-1 ring-slate-100"
-                              >
-                                 <div className="flex justify-between items-start mb-3">
-                                    <div className="flex items-center gap-3">
-                                       <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 font-bold text-sm border border-slate-100 shadow-inner">
-                                          {card.profile_pic_url ? <img src={card.profile_pic_url} className="w-full h-full rounded-full object-cover" /> : card.name?.[0]}
-                                       </div>
-                                       <div>
-                                          <h4 className="font-bold text-slate-800 text-sm leading-tight">{card.name}</h4>
-                                          <p className="text-[10px] uppercase font-bold text-slate-400 mt-1 tracking-wider">{card.title || 'Oportunidade'}</p>
-                                       </div>
-                                    </div>
-                                 </div>
-
-                                 <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-50">
-                                    <div className="flex items-center gap-1.5 text-slate-600 font-bold text-xs bg-slate-50 px-2.5 py-1.5 rounded-lg">
-                                       <DollarSign size={12} className="text-slate-400" />
-                                       {card.value ? parseFloat(card.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ -'}
-                                    </div>
-                                    <div className="flex-1 text-right">
-                                       <span className="text-[10px] text-slate-400 font-medium flex items-center justify-end gap-1">
-                                          <Clock size={10} /> {new Date(card.created_at).toLocaleDateString()}
-                                       </span>
-                                    </div>
-                                 </div>
                               </div>
-                           ))}
+                           </div>
 
-                           {/* Add Button */}
-                           <button className="w-full py-4 border-2 border-dashed border-slate-200/80 rounded-2xl text-slate-400 text-sm font-bold hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 opacity-70 hover:opacity-100 group">
-                              <div className="p-1 rounded-md bg-slate-100 group-hover:bg-blue-100 transition-colors">
-                                 <Plus size={14} />
-                              </div>
-                              Adicionar Negócio
-                           </button>
+                           {/* Cards Container */}
+                           <Droppable droppableId={String(stage.id)}>
+                              {(provided, snapshot) => (
+                                 <div
+                                    ref={provided.innerRef}
+                                    {...provided.droppableProps}
+                                    className={`flex-1 overflow-y-auto space-y-4 pr-2 pb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent ${snapshot.isDraggingOver ? 'bg-slate-100/50 rounded-xl' : ''}`}
+                                 >
+                                    {stageCards.map((card, index) => (
+                                       // @ts-ignore
+                                       <Draggable key={String(card.id)} draggableId={String(card.id)} index={index}>
+                                          {(provided, snapshot) => (
+                                             <div
+                                                ref={provided.innerRef}
+                                                {...provided.draggableProps}
+                                                {...provided.dragHandleProps}
+                                                onClick={() => setSelectedContact(card)}
+                                                style={{ ...provided.draggableProps.style }}
+                                                className={`bg-white p-5 rounded-2xl border border-transparent shadow-[0_2px_12px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_12px_24px_-8px_rgba(0,0,0,0.12)] hover:border-blue-100 transition-all duration-300 cursor-pointer group relative overflow-hidden ring-1 ring-slate-100 ${snapshot.isDragging ? 'shadow-2xl ring-2 ring-blue-400 rotate-2' : ''}`}
+                                             >
+                                                <div className="flex justify-between items-start mb-3">
+                                                   <div className="flex items-center gap-3">
+                                                      <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 font-bold text-sm border border-slate-100 shadow-inner">
+                                                         {card.profile_pic_url ? <img src={card.profile_pic_url} className="w-full h-full rounded-full object-cover" /> : (card.name?.[0] || '?')}
+                                                      </div>
+                                                      <div>
+                                                         <h4 className="font-bold text-slate-800 text-sm leading-tight">{card.name}</h4>
+                                                         <p className="text-[10px] uppercase font-bold text-slate-400 mt-1 tracking-wider">{card.title || 'Oportunidade'}</p>
+                                                      </div>
+                                                   </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-50">
+                                                   <div className="flex items-center gap-1.5 text-slate-600 font-bold text-xs bg-slate-50 px-2.5 py-1.5 rounded-lg">
+                                                      <DollarSign size={12} className="text-slate-400" />
+                                                      {card.value ? parseFloat(card.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ -'}
+                                                   </div>
+                                                   <div className="flex-1 text-right">
+                                                      <span className="text-[10px] text-slate-400 font-medium flex items-center justify-end gap-1">
+                                                         <Clock size={10} /> {new Date(card.created_at).toLocaleDateString()}
+                                                      </span>
+                                                   </div>
+                                                </div>
+                                             </div>
+                                          )}
+                                       </Draggable>
+                                    ))}
+                                    {provided.placeholder}
+
+                                    {/* Add Button - only show if not dragging over to keep clean? kept for now */}
+                                    <button className="w-full py-4 border-2 border-dashed border-slate-200/80 rounded-2xl text-slate-400 text-sm font-bold hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 opacity-70 hover:opacity-100 group">
+                                       <div className="p-1 rounded-md bg-slate-100 group-hover:bg-blue-100 transition-colors">
+                                          <Plus size={14} />
+                                       </div>
+                                       Adicionar Negócio
+                                    </button>
+                                 </div>
+                              )}
+                           </Droppable>
                         </div>
-                     </div>
-                  );
-               })}
+                     );
+                  })}
+               </div>
             </div>
-         </div>
+         </DragDropContext>
 
          {selectedContact && (
             <div className="absolute inset-0 z-20 bg-slate-900/60 backdrop-blur-sm animate-fade-in flex items-center justify-center p-4" onClick={() => setSelectedContact(null)}>

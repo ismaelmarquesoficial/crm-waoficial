@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
     "@types/papaparse": "^5.5.2",
     "axios": "^1.13.4",
     "emoji-picker-react": "^4.17.4",
