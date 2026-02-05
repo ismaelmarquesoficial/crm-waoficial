@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Tag as TagIcon, Phone, Mail, User, Filter, X, Plus, Edit2, Trash2, MessageCircle, Layers, TrendingUp } from 'lucide-react';
+import { Search, Tag as TagIcon, Phone, Mail, User, Filter, X, Plus, Edit2, Trash2, MessageCircle, Layers, TrendingUp, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
 import TagManager from './TagManager';
 import TagBadge from './TagBadge';
+import Papa from 'papaparse';
 
 interface Deal {
     id: string;
@@ -47,6 +48,11 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     const [showTagManager, setShowTagManager] = useState(false);
     const [showPipelineManager, setShowPipelineManager] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [importText, setImportText] = useState('');
+    const [importTag, setImportTag] = useState('');
+    const [importPipelineId, setImportPipelineId] = useState('');
+    const [importStageId, setImportStageId] = useState('');
     const [showViewModal, setShowViewModal] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [contactToDelete, setContactToDelete] = useState<{ id: string, name: string } | null>(null);
@@ -58,6 +64,16 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
     const [selectedStageId, setSelectedStageId] = useState<string>('');
     const [isSavingDeal, setIsSavingDeal] = useState(false);
+    const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    // Auto-hide notification
+    useEffect(() => {
+        if (notification) {
+            const timer = setTimeout(() => setNotification(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [notification]);
 
     const token = localStorage.getItem('token');
 
@@ -69,7 +85,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
 
     const fetchPipelines = async () => {
         try {
-            const response = await fetch('http://localhost:3001/api/crm/pipelines', {
+            const response = await fetch('/api/crm/pipelines', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
@@ -90,7 +106,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     const fetchContacts = async () => {
         setLoading(true);
         try {
-            const response = await fetch('http://localhost:3001/api/chat/', {
+            const response = await fetch('/api/chat', {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -114,7 +130,8 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     const filteredContacts = contacts.filter(contact => {
         const matchesSearch =
             contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            contact.phone.includes(searchTerm);
+            contact.phone.includes(searchTerm) ||
+            (contact.email && contact.email.toLowerCase().includes(searchTerm.toLowerCase()));
 
         const matchesTag = !selectedTagFilter || contact.tags?.includes(selectedTagFilter);
 
@@ -151,7 +168,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
 
         setIsSavingDeal(true);
         try {
-            const response = await fetch('http://localhost:3001/api/crm/deals', {
+            const response = await fetch('/api/crm/deals', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -167,11 +184,12 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
             });
 
             if (response.ok) {
-                await fetchContacts(); // Recarrega contatos para mostrar o novo deal
+                await fetchContacts();
                 setShowPipelineManager(false);
+                setNotification({ message: 'Contato adicionado ao funil com sucesso!', type: 'success' });
             } else {
                 const err = await response.json();
-                alert('Erro ao adicionar ao pipeline: ' + (err.error || 'Erro desconhecido'));
+                setNotification({ message: err.error || 'Erro ao adicionar ao pipeline', type: 'error' });
             }
         } catch (error) {
             console.error('Erro ao salvar deal:', error);
@@ -195,7 +213,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
 
         setIsDeleting(contactToDelete.id);
         try {
-            const response = await fetch(`http://localhost:3001/api/chat/contacts/${contactToDelete.id}`, {
+            const response = await fetch(`/api/chat/contacts/${contactToDelete.id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -204,9 +222,10 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                 setContacts(prev => prev.filter(c => c.id !== contactToDelete.id));
                 setShowDeleteConfirm(false);
                 setContactToDelete(null);
+                setNotification({ message: 'Contato excluído com sucesso!', type: 'success' });
             } else {
                 const err = await response.json();
-                alert('Erro ao excluir contato: ' + (err.error || 'Erro desconhecido'));
+                setNotification({ message: err.error || 'Erro ao excluir contato', type: 'error' });
             }
         } catch (error) {
             console.error('Erro ao excluir contato:', error);
@@ -216,13 +235,103 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
         }
     };
 
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    const parsedData = results.data as any[];
+                    // Mapeia nomes de colunas comuns
+                    const formattedText = parsedData.map(row => {
+                        const name = row.name || row.Nome || row.nome || row.NAME || '';
+                        const phone = row.phone || row.Phone || row.telefone || row.Telefone || row.whatsapp || row.WhatsApp || '';
+                        const email = row.email || row.Email || row.email || row.EMAIL || '';
+
+                        if (name && phone) {
+                            return `${name}, ${phone}${email ? `, ${email}` : ''}`;
+                        }
+                        return null;
+                    }).filter(Boolean).join('\n');
+
+                    if (formattedText) {
+                        setImportText(formattedText);
+                        setNotification({ message: 'Arquivo CSV processado! Os dados foram carregados no campo abaixo.', type: 'success' });
+                    } else {
+                        setNotification({ message: 'Nenhum contato válido encontrado. Certifique-se de que o CSV tenha colunas como "Nome" e "Telefone".', type: 'error' });
+                    }
+                    // Reset input
+                    if (e.target) e.target.value = '';
+                },
+                error: (error) => {
+                    console.error('Erro ao ler CSV:', error);
+                    setNotification({ message: 'Erro ao processar o arquivo CSV.', type: 'error' });
+                }
+            });
+        }
+    };
+
+    const handleImportContacts = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const lines = importText.split('\n').filter(l => l.trim());
+        const contactsToImport = lines.map(line => {
+            const parts = line.split(',').map(p => p.trim());
+            return {
+                name: parts[0],
+                phone: parts[1],
+                email: parts[2] || null
+            };
+        }).filter(c => c.name && c.phone);
+
+        if (contactsToImport.length === 0) {
+            setNotification({ message: 'Nenhum contato válido encontrado (Formato: Nome, Telefone)', type: 'error' });
+            return;
+        }
+
+        setIsSavingContact(true);
+        try {
+            const response = await fetch('/api/chat/import', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    contacts: contactsToImport,
+                    tag: importTag || null,
+                    pipeline_id: importPipelineId || null,
+                    stage_id: importStageId || null
+                })
+            });
+
+            if (response.ok) {
+                await fetchContacts();
+                setShowImportModal(false);
+                setImportText('');
+                setImportTag('');
+                setImportPipelineId('');
+                setImportStageId('');
+                setNotification({ message: 'Importação concluída com sucesso!', type: 'success' });
+            } else {
+                const err = await response.json();
+                setNotification({ message: err.error || 'Erro na importação', type: 'error' });
+            }
+        } catch (error) {
+            console.error('Erro na importação:', error);
+            setNotification({ message: 'Erro de conexão ao importar contatos', type: 'error' });
+        } finally {
+            setIsSavingContact(false);
+        }
+    };
+
     const handleAddContact = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newContact.name || !newContact.phone) return;
 
         setIsSavingContact(true);
         try {
-            const response = await fetch('http://localhost:3001/api/chat/contacts', {
+            const response = await fetch('/api/chat/contacts', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -235,13 +344,14 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                 await fetchContacts();
                 setShowAddModal(false);
                 setNewContact({ name: '', phone: '', email: '' });
+                setNotification({ message: 'Contato criado com sucesso!', type: 'success' });
             } else {
                 const err = await response.json();
-                alert('Erro ao criar contato: ' + (err.error || 'Erro desconhecido'));
+                setNotification({ message: err.error || 'Erro ao criar contato', type: 'error' });
             }
         } catch (error) {
             console.error('Erro ao criar contato:', error);
-            alert('Erro de conexão ao criar contato');
+            setNotification({ message: 'Erro de conexão ao criar contato', type: 'error' });
         } finally {
             setIsSavingContact(false);
         }
@@ -251,16 +361,16 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
             {/* Header */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                         <div>
-                            <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-                                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                                    <User className="text-white" size={24} strokeWidth={2.5} />
+                            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                                <div className="w-10 h-10 bg-brand-gradient rounded-xl flex items-center justify-center shadow-lg">
+                                    <User className="text-white" size={20} strokeWidth={2.5} />
                                 </div>
                                 Contatos
                             </h1>
-                            <p className="text-slate-600 mt-1">
+                            <p className="text-slate-500 text-xs mt-0.5">
                                 Gerencie seus contatos e organize por tags
                             </p>
                         </div>
@@ -269,43 +379,50 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                             <span className="text-sm font-semibold text-slate-600">
                                 {filteredContacts.length} {filteredContacts.length === 1 ? 'contato' : 'contatos'}
                             </span>
-                            <button
-                                onClick={() => setShowAddModal(true)}
-                                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:shadow-blue-300 hover:scale-[1.02] active:scale-95 transition-all text-sm"
-                            >
-                                <Plus size={18} strokeWidth={3} />
-                                Novo Contato
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setShowImportModal(true)}
+                                    className="px-4 py-2 bg-white text-slate-700 rounded-xl font-semibold border border-slate-200 shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 text-xs"
+                                >
+                                    <Download size={16} className="rotate-180" /> Importar
+                                </button>
+                                <button
+                                    onClick={() => setShowAddModal(true)}
+                                    className="bg-brand-gradient text-white px-4 py-2 rounded-xl font-bold shadow-lg shadow-blue-500/20 hover:contrast-125 active:scale-95 transition-all flex items-center gap-2 text-xs"
+                                >
+                                    <Plus size={18} /> Novo Contato
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 {/* Barra de Busca e Filtros */}
-                <div className="mb-6 space-y-4">
+                <div className="mb-4 space-y-3">
                     {/* Busca */}
                     <div className="relative">
-                        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
+                        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
                         <input
                             type="text"
                             placeholder="Buscar por nome ou telefone..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                            className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-xs"
                         />
                     </div>
 
                     {/* Filtro de Tags */}
                     {allTags.length > 0 && (
-                        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Filter size={16} className="text-slate-600" />
-                                <h3 className="font-semibold text-slate-900 text-sm">Filtrar por Tag</h3>
+                        <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Filter size={14} className="text-slate-600" />
+                                <h3 className="font-semibold text-slate-800 text-xs">Filtrar por Tag</h3>
                                 {selectedTagFilter && (
                                     <button
                                         onClick={() => setSelectedTagFilter(null)}
-                                        className="ml-auto text-xs text-purple-600 hover:text-purple-700 font-semibold"
+                                        className="ml-auto text-xs text-blue-600 hover:text-blue-700 font-semibold"
                                     >
                                         Limpar filtro
                                     </button>
@@ -315,7 +432,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                 <button
                                     onClick={() => setSelectedTagFilter(null)}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${!selectedTagFilter
-                                        ? 'bg-purple-600 text-white shadow-md'
+                                        ? 'bg-blue-600 text-white shadow-md'
                                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                         }`}
                                 >
@@ -326,8 +443,8 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                         key={tag}
                                         onClick={() => setSelectedTagFilter(tag)}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${selectedTagFilter === tag
-                                            ? 'bg-purple-600 text-white shadow-md'
-                                            : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                            ? 'bg-blue-600 text-white shadow-md'
+                                            : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                                             }`}
                                     >
                                         {tag}
@@ -356,54 +473,60 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                         </p>
                     </div>
                 ) : (
-                    <div className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm">
-                        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)] scrollbar-thin scrollbar-thumb-slate-200">
-                            <table className="w-full text-left border-collapse min-w-[800px]">
-                                <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm">
-                                    <tr className="border-b border-slate-200">
-                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Contato</th>
-                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tags</th>
-                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pipelines CRM</th>
-                                        <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                    <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl mb-8 overflow-hidden">
+                        <div className="overflow-auto max-h-[calc(100vh-320px)] relative">
+                            <table className="w-full text-left border-separate border-spacing-0 min-w-[800px]">
+                                <thead className="sticky top-0 z-30 bg-white shadow-sm">
+                                    <tr>
+                                        <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/80 backdrop-blur-sm border-b border-slate-100">Contato</th>
+                                        <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/80 backdrop-blur-sm border-b border-slate-100">Tags</th>
+                                        <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/80 backdrop-blur-sm border-b border-slate-100">Pipelines CRM</th>
+                                        <th className="px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right bg-slate-50/80 backdrop-blur-sm border-b border-slate-100">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {filteredContacts.map(contact => (
                                         <tr
                                             key={contact.id}
-                                            className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                                            className="group hover:bg-slate-50/80 transition-all cursor-pointer border-l-4 border-l-transparent hover:border-l-meta"
                                             onClick={() => {
                                                 setSelectedContact(contact);
                                                 setShowViewModal(true);
                                             }}
                                         >
                                             {/* Contato Info */}
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
+                                            <td className="px-5 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 bg-brand-gradient rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm shrink-0">
                                                         {contact.name.charAt(0).toUpperCase()}
                                                     </div>
                                                     <div className="min-w-0">
                                                         <div className="flex items-center gap-2">
-                                                            <h3 className="font-bold text-slate-900 truncate hover:text-blue-600 transition-colors">{contact.name}</h3>
+                                                            <h3 className="font-bold text-slate-800 text-sm truncate hover:text-blue-600 transition-colors">{contact.name}</h3>
                                                             {contact.unread_count && contact.unread_count > 0 && (
                                                                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
                                                                     {contact.unread_count}
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <div className="flex items-center gap-3 mt-0.5">
-                                                            <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                                                                <Phone size={12} strokeWidth={2} />
+                                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
+                                                            <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
+                                                                <Phone size={10} strokeWidth={2.5} />
                                                                 <span>{contact.phone}</span>
                                                             </div>
+                                                            {contact.email && (
+                                                                <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
+                                                                    <Mail size={10} strokeWidth={2.5} />
+                                                                    <span className="truncate max-w-[200px]">{contact.email}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
                                             </td>
 
                                             {/* Tags Badge */}
-                                            <td className="px-6 py-4">
+                                            <td className="px-5 py-3">
                                                 <div className="flex flex-wrap gap-1 max-w-[180px]">
                                                     {contact.tags && contact.tags.length > 0 ? (
                                                         <>
@@ -428,7 +551,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                             </td>
 
                                             {/* Pipelines Info */}
-                                            <td className="px-6 py-4">
+                                            <td className="px-5 py-3">
                                                 <div className="flex flex-wrap gap-1 max-w-[220px]">
                                                     {contact.deals && contact.deals.length > 0 ? (
                                                         <>
@@ -458,8 +581,8 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                             </td>
 
                                             {/* Ações Rápidas */}
-                                            <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 group-hover:translate-x-0">
+                                            <td className="px-5 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 group-hover:translate-x-0">
                                                     <button
                                                         onClick={() => handleOpenChat(contact.id)}
                                                         title="Abrir Chat"
@@ -470,7 +593,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                                     <button
                                                         onClick={() => handleOpenTagManager(contact)}
                                                         title="Gerenciar Tags"
-                                                        className="w-8 h-8 flex items-center justify-center bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-all active:scale-90"
+                                                        className="w-8 h-8 flex items-center justify-center bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all active:scale-90"
                                                     >
                                                         <TagIcon size={16} />
                                                     </button>
@@ -513,19 +636,22 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                 showTagManager && selectedContact && (
                     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in shadow-2xl">
                         <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-                            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
-                                <div>
-                                    <h2 className="text-xl font-bold text-slate-900">Gerenciar Tags</h2>
-                                    <p className="text-xs text-slate-500 font-medium">Organize por etiquetas personalizadas</p>
+                            <div className="modal-header-gradient">
+                                <div className="flex items-center gap-3">
+                                    <TagIcon className="text-white" size={20} />
+                                    <div>
+                                        <h2 className="text-lg font-bold">Gerenciar Tags</h2>
+                                        <p className="text-[10px] text-white/80 font-medium">Organize por etiquetas personalizadas</p>
+                                    </div>
                                 </div>
                                 <button
                                     onClick={() => setShowTagManager(false)}
-                                    className="p-2 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-400 hover:text-slate-600"
+                                    className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
                                 >
-                                    <X size={20} strokeWidth={2.5} />
+                                    <X size={18} strokeWidth={2.5} />
                                 </button>
                             </div>
-                            <div className="p-6">
+                            <div className="p-5">
                                 <TagManager
                                     contactId={selectedContact.id}
                                     contactName={selectedContact.name}
@@ -542,20 +668,18 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
             {
                 showPipelineManager && selectedContact && (
                     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in shadow-2xl">
-                        <div className="bg-white rounded-[2.5rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-                            <div className="flex justify-between items-center p-8 border-b border-slate-100 bg-slate-50/50">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
-                                        <TrendingUp className="text-white" size={24} />
-                                    </div>
+                        <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+                            <div className="modal-header-gradient">
+                                <div className="flex items-center gap-3">
+                                    <TrendingUp className="text-white" size={20} />
                                     <div>
-                                        <h2 className="text-xl font-bold text-slate-900">Atribuir ao CRM</h2>
-                                        <p className="text-xs text-slate-500 font-medium">Mover {selectedContact.name} no funil</p>
+                                        <h2 className="text-lg font-bold">Atribuir ao CRM</h2>
+                                        <p className="text-[10px] text-white/80 font-medium">Mover {selectedContact.name} no funil</p>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => setShowPipelineManager(false)}
-                                    className="p-2 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-400 hover:text-slate-600"
+                                    className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
                                 >
                                     <X size={20} strokeWidth={2.5} />
                                 </button>
@@ -606,7 +730,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                 <button
                                     onClick={handleAddToPipeline}
                                     disabled={isSavingDeal || !selectedStageId}
-                                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5 rounded-2xl font-bold shadow-xl shadow-blue-200 hover:shadow-blue-300 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-3"
+                                    className="btn-primary"
                                 >
                                     {isSavingDeal ? (
                                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -625,58 +749,56 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
             {/* Modal de Adição de Contato */}
             {showAddModal && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-fade-in shadow-2xl">
-                    <div className="bg-white rounded-[2.5rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-                        <div className="flex justify-between items-center p-8 border-b border-slate-100 bg-slate-50/50">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-200">
-                                    <User className="text-white" size={24} />
-                                </div>
+                    <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+                        <div className="modal-header-gradient">
+                            <div className="flex items-center gap-3">
+                                <User className="text-white" size={20} />
                                 <div>
-                                    <h2 className="text-xl font-bold text-slate-900">Novo Contato</h2>
-                                    <p className="text-xs text-slate-500 font-medium">Cadastre um novo lead manualmente</p>
+                                    <h2 className="text-lg font-bold">Novo Contato</h2>
+                                    <p className="text-[10px] text-white/80 font-medium">Cadastre um novo lead manualmente</p>
                                 </div>
                             </div>
                             <button
                                 onClick={() => setShowAddModal(false)}
-                                className="p-2 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-400 hover:text-slate-600"
+                                className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
                             >
                                 <X size={20} strokeWidth={2.5} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleAddContact} className="p-8 space-y-6">
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Nome Completo</label>
+                        <form onSubmit={handleAddContact} className="p-6 space-y-4">
+                            <div className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nome Completo</label>
                                     <input
                                         required
                                         type="text"
                                         value={newContact.name}
                                         onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
-                                        className="w-full bg-slate-50 border-0 p-4 rounded-2xl text-sm font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                                        className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                                         placeholder="Ex: João Silva"
                                     />
                                 </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">WhatsApp / Telefone</label>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">WhatsApp / Telefone</label>
                                     <input
                                         required
                                         type="text"
                                         value={newContact.phone}
                                         onChange={(e) => setNewContact({ ...newContact, phone: e.target.value.replace(/\D/g, '') })}
-                                        className="w-full bg-slate-50 border-0 p-4 rounded-2xl text-sm font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                                        className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                                         placeholder="Ex: 5511999999999"
                                     />
                                 </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">E-mail (Opcional)</label>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">E-mail (Opcional)</label>
                                     <input
                                         type="email"
                                         value={newContact.email}
                                         onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-                                        className="w-full bg-slate-50 border-0 p-4 rounded-2xl text-sm font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                                        className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                                         placeholder="joao@exemplo.com"
                                     />
                                 </div>
@@ -685,7 +807,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                             <button
                                 type="submit"
                                 disabled={isSavingContact}
-                                className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5 rounded-2xl font-bold shadow-xl shadow-blue-200 hover:shadow-blue-300 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-3"
+                                className="btn-primary"
                             >
                                 {isSavingContact ? (
                                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -705,105 +827,105 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
             {showViewModal && selectedContact && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[55] p-4 animate-fade-in shadow-2xl">
                     <div className="bg-white rounded-[2.5rem] max-w-2xl w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-                        {/* Header do Modal */}
-                        <div className="relative h-32 bg-gradient-to-r from-blue-600 to-indigo-700">
-                            <button
-                                onClick={() => setShowViewModal(false)}
-                                className="absolute top-6 right-6 p-2 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-xl transition-all text-white border border-white/20"
-                            >
-                                <X size={20} strokeWidth={2.5} />
-                            </button>
-                            <div className="absolute -bottom-10 left-8">
-                                <div className="w-24 h-24 bg-white p-1.5 rounded-[2rem] shadow-xl">
-                                    <div className="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 rounded-[1.7rem] flex items-center justify-center text-white font-bold text-3xl">
-                                        {selectedContact.name.charAt(0).toUpperCase()}
+                        {/* Header com degradê padrão */}
+                        <div className="modal-header-gradient relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+                            <div className="flex items-center gap-4 relative z-10">
+                                <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/30 font-bold text-lg">
+                                    {selectedContact.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold">{selectedContact.name}</h2>
+                                    <div className="flex items-center gap-2 text-white/80 text-[10px] font-medium mt-0.5">
+                                        <div className="flex items-center gap-1">
+                                            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
+                                            Ativo no Sistema
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+                            <button onClick={() => setShowViewModal(false)} className="p-2 hover:bg-white/20 rounded-xl text-white transition-all relative z-10">
+                                <X size={22} />
+                            </button>
                         </div>
 
                         {/* Conteúdo do Modal */}
-                        <div className="pt-14 p-8 space-y-8">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-slate-900">{selectedContact.name}</h2>
-                                    <p className="text-slate-500 font-medium">Cliente desde {new Date().toLocaleDateString()}</p>
-                                </div>
+                        <div className="p-6 space-y-6">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-sm font-bold text-slate-800">Detalhes do Perfil</h3>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => {
                                             handleOpenChat(selectedContact.id);
                                             setShowViewModal(false);
                                         }}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:scale-[1.02] active:scale-95 transition-all text-sm flex items-center gap-2"
+                                        className="px-4 py-2 bg-brand-gradient text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 hover:contrast-125 active:scale-95 transition-all text-xs flex items-center gap-2"
                                     >
-                                        <MessageCircle size={18} />
+                                        <MessageCircle size={16} />
                                         Abrir Chat
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-8">
+                            <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-6">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Informações de Contato</label>
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                                <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-blue-600">
-                                                    <Phone size={18} />
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Informações de Contato</label>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
+                                                <div className="w-9 h-9 bg-brand-gradient rounded-lg shadow-sm flex items-center justify-center text-white">
+                                                    <Phone size={16} />
                                                 </div>
-                                                <div>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">WhatsApp</p>
-                                                    <p className="text-sm font-bold text-slate-700">{selectedContact.phone}</p>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">WhatsApp</p>
+                                                    <p className="text-xs font-bold text-slate-700">{selectedContact.phone}</p>
                                                 </div>
                                             </div>
-                                            {selectedContact.email && (
-                                                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                                    <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-blue-600">
-                                                        <Mail size={18} />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase">E-mail</p>
-                                                        <p className="text-sm font-bold text-slate-700">{selectedContact.email}</p>
-                                                    </div>
+                                            <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
+                                                <div className="w-9 h-9 bg-brand-gradient rounded-lg shadow-sm flex items-center justify-center text-white">
+                                                    <Mail size={16} />
                                                 </div>
-                                            )}
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</p>
+                                                    <p className="text-xs font-bold text-slate-700 truncate">{selectedContact.email || 'Não informado'}</p>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Tags do Cliente</label>
-                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-wrap gap-2">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Tags do Cliente</label>
+                                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-wrap gap-1.5">
                                             {selectedContact.tags && selectedContact.tags.length > 0 ? (
                                                 selectedContact.tags.map(tag => (
-                                                    <span key={tag} className="px-3 py-1 bg-white text-purple-600 rounded-lg text-xs font-bold border border-purple-100 shadow-sm">
+                                                    <span key={tag} className="px-2.5 py-1 bg-white text-blue-600 rounded-lg text-[10px] font-bold border border-blue-100 shadow-sm">
                                                         {tag}
                                                     </span>
                                                 ))
                                             ) : (
-                                                <p className="text-xs text-slate-400 italic">Nenhuma tag atribuída</p>
+                                                <p className="text-[10px] text-slate-400 italic">Nenhuma tag atribuída</p>
                                             )}
                                         </div>
                                     </div>
                                 </div>
 
                                 <div className="space-y-6">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Presença em Pipelines</label>
-                                        <div className="space-y-3">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Presença em Pipelines</label>
+                                        <div className="space-y-2">
                                             {selectedContact.deals && selectedContact.deals.length > 0 ? (
                                                 selectedContact.deals.map(deal => (
-                                                    <div key={deal.id} className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm border-l-4" style={{ borderLeftColor: deal.stage_color }}>
-                                                        <div className="flex items-center justify-between mb-1">
+                                                    <div key={deal.id} className="p-3 bg-white rounded-xl border border-slate-100 shadow-sm border-l-4" style={{ borderLeftColor: deal.stage_color }}>
+                                                        <div className="flex items-center justify-between mb-0.5">
                                                             <p className="text-[10px] font-bold text-slate-400 uppercase">{deal.pipeline_name}</p>
-                                                            <Layers size={14} className="text-slate-300" />
+                                                            <Layers size={12} className="text-slate-300" />
                                                         </div>
-                                                        <p className="text-sm font-bold text-slate-700">{deal.stage_name}</p>
+                                                        <p className="text-xs font-bold text-slate-700">{deal.stage_name}</p>
                                                     </div>
                                                 ))
                                             ) : (
-                                                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                                                    <p className="text-xs text-slate-400 italic">Não está em nenhum funil</p>
+                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                                                    <p className="text-[10px] text-slate-400 italic">Não está em nenhum funil</p>
                                                 </div>
                                             )}
                                         </div>
@@ -828,28 +950,28 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
             {/* Modal de Confirmação de Exclusão */}
             {showDeleteConfirm && contactToDelete && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in shadow-2xl">
-                    <div className="bg-white rounded-[2.5rem] max-w-sm w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-                        <div className="p-8 text-center space-y-6">
-                            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-500 animate-pulse">
-                                <Trash2 size={40} />
+                    <div className="bg-white rounded-[2rem] max-w-sm w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+                        <div className="p-6 text-center space-y-5">
+                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-500 animate-pulse">
+                                <Trash2 size={32} />
                             </div>
 
-                            <div className="space-y-2">
-                                <h3 className="text-xl font-bold text-slate-900">Excluir Contato?</h3>
-                                <p className="text-sm text-slate-500 leading-relaxed px-4">
+                            <div className="space-y-1.5">
+                                <h3 className="text-lg font-bold text-slate-900">Excluir Contato?</h3>
+                                <p className="text-xs text-slate-500 leading-relaxed px-4">
                                     Tem certeza que deseja excluir o contato <span className="font-bold text-slate-700">"{contactToDelete.name}"</span>?
                                     Isso removerá permanentemente o chat e os negócios vinculados.
                                 </p>
                             </div>
 
-                            <div className="flex flex-col gap-3 pt-2">
+                            <div className="flex flex-col gap-2.5 pt-1">
                                 <button
                                     onClick={handleDeleteContact}
                                     disabled={isDeleting !== null}
-                                    className="w-full bg-red-600 text-white p-4 rounded-2xl font-bold shadow-xl shadow-red-200 hover:bg-red-700 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                                    className="w-full bg-red-600 text-white p-3.5 rounded-xl font-bold shadow-xl shadow-red-200 hover:bg-red-700 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 text-sm"
                                 >
                                     {isDeleting !== null ? (
-                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                                     ) : (
                                         "Sim, Excluir Agora"
                                     )}
@@ -860,7 +982,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                         setContactToDelete(null);
                                     }}
                                     disabled={isDeleting !== null}
-                                    className="w-full bg-slate-100 text-slate-600 p-4 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95 disabled:opacity-50"
+                                    className="w-full bg-slate-100 text-slate-600 p-3.5 rounded-xl font-bold hover:bg-slate-200 transition-all active:scale-95 disabled:opacity-50 text-sm"
                                 >
                                     Cancelar
                                 </button>
@@ -869,7 +991,161 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                     </div>
                 </div>
             )}
-        </div >
+            {/* Modal de Importação */}
+            {showImportModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-fade-in shadow-2xl">
+                    <div className="bg-white rounded-[2rem] max-w-2xl w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+                        <div className="modal-header-gradient">
+                            <div className="flex items-center gap-3">
+                                <Download size={20} className="text-white rotate-180" />
+                                <div>
+                                    <h2 className="text-lg font-bold">Importação em Massa</h2>
+                                    <p className="text-[10px] text-white/80 font-medium">Cole sua lista de contatos para processamento</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowImportModal(false)} className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleImportContacts} className="p-6 space-y-5">
+                            <div className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 flex justify-between items-center">
+                                        Lista de Contatos
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-blue-500 lowercase font-normal italic">Formato: Nome, Telefone, Email</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg text-[10px] font-bold border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-1.5"
+                                            >
+                                                <Download size={12} className="rotate-180" />
+                                                Upload CSV
+                                            </button>
+                                            <input
+                                                type="file"
+                                                ref={fileInputRef}
+                                                onChange={handleFileUpload}
+                                                accept=".csv"
+                                                className="hidden"
+                                            />
+                                        </div>
+                                    </label>
+                                    <textarea
+                                        required
+                                        rows={6}
+                                        value={importText}
+                                        onChange={(e) => setImportText(e.target.value)}
+                                        className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none resize-none shadow-inner"
+                                        placeholder="Ex:&#10;João Silva, 551188887777&#10;Maria Oliveira, 551188886666, maria@email.com"
+                                    />
+                                    <div className="flex flex-col gap-2 mt-2">
+                                        <div className="flex gap-2 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                                            <AlertCircle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                                            <p className="text-[10px] text-amber-700 leading-relaxed font-medium">
+                                                <span className="font-bold">Atenção ao Formato:</span> O número deve conter o Código do País (sem "+"), o DDD e apenas 8 dígitos (remova o "9" inicial, ex: 551188887777).
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                            <Layers size={14} className="text-blue-600 shrink-0 mt-0.5" />
+                                            <p className="text-[10px] text-blue-700 leading-relaxed font-medium">
+                                                <span className="font-bold">Sincronização Inteligente:</span> Se um contato já existir, não criaremos um duplicado. Apenas adicionaremos a nova Tag ou o novo Funil ao cadastro dele.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Atribuir Tag (Opcional)</label>
+                                        <input
+                                            type="text"
+                                            value={importTag}
+                                            onChange={(e) => setImportTag(e.target.value)}
+                                            className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                                            placeholder="Ex: Lead_Maio"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Mover para Funil (Opcional)</label>
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={importPipelineId}
+                                                onChange={(e) => {
+                                                    const pid = e.target.value;
+                                                    setImportPipelineId(pid);
+                                                    const pipe = pipelines.find(p => String(p.id) === String(pid));
+                                                    if (pipe && pipe.stages.length > 0) setImportStageId(pipe.stages[0].id);
+                                                }}
+                                                className="flex-1 bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                                            >
+                                                <option value="">Selecione o Pipeline</option>
+                                                {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {importPipelineId && (
+                                    <div className="space-y-2 animate-fade-in">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Etapa do Funil</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {pipelines.find(p => String(p.id) === String(importPipelineId))?.stages.map(s => (
+                                                <button
+                                                    key={s.id}
+                                                    type="button"
+                                                    onClick={() => setImportStageId(s.id)}
+                                                    className={`p-3 rounded-xl text-[10px] font-bold border-2 transition-all flex flex-col items-center gap-1 ${String(importStageId) === String(s.id) ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white border-slate-100 text-slate-500'}`}
+                                                >
+                                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }}></div>
+                                                    {s.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={isSavingContact || !importText.trim()}
+                                className="btn-primary"
+                            >
+                                {isSavingContact ? (
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                ) : (
+                                    <>
+                                        <Download size={18} className="rotate-180" />
+                                        Iniciar Importação
+                                    </>
+                                )}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+            {/* Sistema de Notificação (Toast) */}
+            {notification && (
+                <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl animate-slide-up border border-white/20 backdrop-blur-md ${notification.type === 'success'
+                    ? 'bg-emerald-500/90 text-white'
+                    : 'bg-red-500/90 text-white'
+                    }`}>
+                    {notification.type === 'success' ? (
+                        <CheckCircle2 size={20} className="text-emerald-100" />
+                    ) : (
+                        <AlertCircle size={20} className="text-red-100" />
+                    )}
+                    <p className="text-sm font-bold tracking-tight">{notification.message}</p>
+                    <button
+                        onClick={() => setNotification(null)}
+                        className="ml-2 p-1 hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
+        </div>
     );
 };
 

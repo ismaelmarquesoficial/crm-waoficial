@@ -29,6 +29,7 @@ router.get('/', async (req, res) => {
                 c.id, 
                 c.name, 
                 c.phone, 
+                c.email,
                 c.last_interaction,
                 c.tags,
                 (SELECT message FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message,
@@ -335,6 +336,157 @@ router.delete('/contacts/:contactId', async (req, res) => {
         await client.query('ROLLBACK');
         console.error('Erro ao excluir contato:', err);
         res.status(500).json({ error: 'Erro ao excluir contato' });
+    } finally {
+        client.release();
+    }
+});
+
+// Importação em Lote de Contatos (com Tag e Funil Opcionais)
+router.post('/import-batch', verifyToken, async (req, res) => {
+    const { contacts, tag, pipeline_id, stage_id } = req.body;
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+    if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
+        return res.status(400).json({ error: 'Lista de contatos é obrigatória' });
+    }
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const results = { imported: 0, skipped: 0, errors: [] };
+
+        for (const contact of contacts) {
+            try {
+                if (!contact.phone || !contact.name) {
+                    results.skipped++;
+                    continue;
+                }
+
+                const phone = String(contact.phone).replace(/\D/g, '');
+
+                // 1. Inserir ou buscar contato
+                let contactId;
+                const check = await client.query('SELECT id FROM contacts WHERE phone = $1 AND tenant_id = $2', [phone, tenantId]);
+
+                if (check.rows.length > 0) {
+                    contactId = check.rows[0].id;
+                    if (tag || contact.email) {
+                        await client.query(`
+                            UPDATE contacts SET 
+                                tags = CASE 
+                                    WHEN $1 = ANY(tags) OR $1 IS NULL THEN tags 
+                                    ELSE array_append(tags, $1) 
+                                END,
+                                email = COALESCE(email, $3)
+                            WHERE id = $2
+                        `, [tag || null, contactId, contact.email || null]);
+                    }
+                } else {
+                    const insert = await client.query(
+                        'INSERT INTO contacts (tenant_id, name, phone, email, tags, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id',
+                        [tenantId, contact.name, phone, contact.email || null, tag ? [tag] : []]
+                    );
+                    contactId = insert.rows[0].id;
+                }
+
+                // 2. Adicionar ao Funil se solicitado
+                if (pipeline_id && stage_id) {
+                    // Verificar se já existe deal aberto para este contato neste pipeline
+                    const dealCheck = await client.query(
+                        "SELECT id FROM deals WHERE contact_id = $1 AND pipeline_id = $2 AND status = 'open'",
+                        [contactId, pipeline_id]
+                    );
+
+                    if (dealCheck.rows.length === 0) {
+                        await client.query(
+                            `INSERT INTO deals (tenant_id, contact_id, pipeline_id, stage_id, title, value, status, created_at, updated_at) 
+                             VALUES ($1, $2, $3, $4, $5, 0, 'open', NOW(), NOW())`,
+                            [tenantId, contactId, pipeline_id, stage_id, contact.name]
+                        );
+                    }
+                }
+                results.imported++;
+            } catch (itemErr) {
+                console.error('Erro ao importar item:', itemErr);
+                results.errors.push({ name: contact.name, error: itemErr.message });
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ message: 'Processamento concluído', results });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Erro fatal na importação:', err);
+        res.status(500).json({ error: 'Erro ao processar importação' });
+    } finally {
+        client.release();
+    }
+});
+
+// Importação em massa de contatos
+router.post('/import', async (req, res) => {
+    const { contacts, tag, pipeline_id, stage_id } = req.body;
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+    if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
+        return res.status(400).json({ error: 'Nenhum contato enviado para importação' });
+    }
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const importedIds = [];
+
+        for (const contact of contacts) {
+            const { name, phone, email } = contact;
+            if (!name || !phone) continue;
+
+            const cleanPhone = phone.replace(/\D/g, '');
+
+            // 1. Criar ou Obter Contato
+            let contactId;
+            const check = await client.query('SELECT id, tags FROM contacts WHERE phone = $1 AND tenant_id = $2', [cleanPhone, tenantId]);
+
+            if (check.rows.length > 0) {
+                contactId = check.rows[0].id;
+                if (tag || email) {
+                    await client.query(`
+                        UPDATE contacts 
+                        SET 
+                            tags = CASE WHEN $2 = ANY(tags) OR $2 IS NULL THEN tags ELSE array_append(tags, $2) END,
+                            email = COALESCE(email, $3)
+                        WHERE id = $1
+                    `, [contactId, tag || null, email || null]);
+                }
+            } else {
+                const result = await client.query(
+                    'INSERT INTO contacts (tenant_id, name, phone, email, tags, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id',
+                    [tenantId, name, cleanPhone, email || null, tag ? [tag] : []]
+                );
+                contactId = result.rows[0].id;
+            }
+
+            // 2. Criar Deal se pipeline e stage forem fornecidos
+            if (pipeline_id && stage_id) {
+                // Verificar se já tem deal nesse pipeline para este contato (opcional, mas evita duplicatas)
+                const dealCheck = await client.query('SELECT id FROM deals WHERE contact_id = $1 AND pipeline_id = $2', [contactId, pipeline_id]);
+                if (dealCheck.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO deals (tenant_id, contact_id, pipeline_id, stage_id, title, status, created_at, updated_at) 
+                         VALUES ($1, $2, $3, $4, $5, 'open', NOW(), NOW())`,
+                        [tenantId, contactId, pipeline_id, stage_id, name]
+                    );
+                }
+            }
+            importedIds.push(contactId);
+        }
+
+        await client.query('COMMIT');
+        res.json({ message: `${importedIds.length} contatos processados com sucesso`, count: importedIds.length });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Erro na importação:', err);
+        res.status(500).json({ error: 'Erro ao importar contatos' });
     } finally {
         client.release();
     }

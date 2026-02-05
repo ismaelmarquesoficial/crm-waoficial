@@ -81,8 +81,6 @@ const TagManager: React.FC<TagManagerProps> = ({
         const colors = [
             'bg-blue-100 text-blue-700 border-blue-200',
             'bg-green-100 text-green-700 border-green-200',
-            'bg-purple-100 text-purple-700 border-purple-200',
-            'bg-pink-100 text-pink-700 border-pink-200',
             'bg-yellow-100 text-yellow-700 border-yellow-200',
             'bg-indigo-100 text-indigo-700 border-indigo-200',
             'bg-red-100 text-red-700 border-red-200',
@@ -97,7 +95,7 @@ const TagManager: React.FC<TagManagerProps> = ({
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
             {/* Header */}
             <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
+                <div className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-lg">
                     <TagIcon size={20} className="text-white" strokeWidth={2.5} />
                 </div>
                 <div>
@@ -150,14 +148,14 @@ const TagManager: React.FC<TagManagerProps> = ({
                             }
                         }}
                         placeholder="Nome da tag..."
-                        className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         autoFocus
                         disabled={loading}
                     />
                     <button
                         onClick={addTag}
                         disabled={loading || !newTag.trim()}
-                        className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100"
+                        className="px-4 py-2 bg-brand-gradient text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg hover:contrast-125 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100"
                     >
                         {loading ? 'Salvando...' : 'Adicionar'}
                     </button>
@@ -175,7 +173,7 @@ const TagManager: React.FC<TagManagerProps> = ({
             ) : (
                 <button
                     onClick={() => setIsAdding(true)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 transition-all font-semibold text-sm group"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all font-semibold text-sm group"
                 >
                     <Plus size={18} className="group-hover:scale-110 transition-transform" strokeWidth={2.5} />
                     Nova Tag

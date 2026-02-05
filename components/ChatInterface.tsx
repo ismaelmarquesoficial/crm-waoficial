@@ -136,7 +136,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const fetchChats = useCallback(async () => {
     const token = localStorage.getItem('token');
     try {
-      const url = new URL('http://localhost:3001/api/chat');
+      const url = new URL(window.location.origin + '/api/chat');
       if (selectedChannel !== 'all') {
         url.searchParams.append('channelId', selectedChannel);
       }
@@ -155,7 +155,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
         lastMessage: c.last_message || 'Nova conversa',
         lastMessageTime: c.last_message_time ? new Date(c.last_message_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
         unreadCount: parseInt(c.unread_count || '0'),
-        tags: []
+        tags: c.tags || [],
+        email: c.email || ''
       }));
 
       setContacts(mappedContacts);
@@ -174,7 +175,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
     const token = localStorage.getItem('token');
     try {
-      const url = new URL(`http://localhost:3001/api/chat/${contactId}/messages`);
+      const url = new URL(window.location.origin + `/api/chat/${contactId}/messages`);
       if (selectedChannel && selectedChannel !== 'all') {
         url.searchParams.append('channelId', selectedChannel);
       }
@@ -558,8 +559,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                     {activeContact.name}
                     <ChevronDown size={14} className="text-slate-400 hidden md:block" />
                   </h2>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] md:text-xs text-slate-500 font-mono tracking-tight bg-slate-100/50 px-1.5 rounded">{activeContact.phone}</span>
+                    {activeContact.email && (
+                      <span className="text-[10px] md:text-xs text-blue-500 font-medium bg-blue-50 px-1.5 rounded truncate max-w-[150px]">{activeContact.email}</span>
+                    )}
                     <span className="hidden md:inline text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Lead</span>
                   </div>
                 </div>
