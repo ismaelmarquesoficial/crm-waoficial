@@ -153,6 +153,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [isPipelineDropdownOpen, setIsPipelineDropdownOpen] = useState(false);
   const [isLoadingDropdown, setIsLoadingDropdown] = useState(false);
   const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(null);
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+
 
 
 
@@ -955,19 +957,38 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       <span className="text-[10px] md:text-xs text-blue-500 font-medium bg-blue-50 px-1.5 rounded truncate max-w-[150px]">{activeContact.email}</span>
                     )}
                     <span className="hidden md:inline text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Lead</span>
-                    <TagBadge tags={activeContact.tags} maxVisible={3} size="sm" />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Usa o contato ativo para abrir o gerenciador
-                        setContactDetails(activeContact as any);
-                        setShowTagManagerModal(true);
-                      }}
-                      className="ml-1 p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-500 transition-colors"
-                      title="Gerenciar Tags"
-                    >
-                      <Plus size={14} strokeWidth={3} />
-                    </button>
+                    <div className="relative flex items-center">
+                      <TagBadge tags={activeContact.tags} maxVisible={2} size="sm" />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsTagDropdownOpen(!isTagDropdownOpen);
+                        }}
+                        className={`ml-1 p-1 rounded-lg transition-colors ${isTagDropdownOpen ? 'bg-blue-100 text-blue-600' : 'hover:bg-slate-100 text-slate-400 hover:text-blue-500'}`}
+                        title="Gerenciar Tags"
+                      >
+                        <Plus size={14} strokeWidth={3} className={`transition-transform ${isTagDropdownOpen ? 'rotate-45' : ''}`} />
+                      </button>
+
+                      {isTagDropdownOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setIsTagDropdownOpen(false)}></div>
+                          <div className="absolute top-full left-0 mt-2 w-72 z-50 animate-fade-in-up origin-top-left shadow-2xl rounded-2xl">
+                            <TagManager
+                              contactId={activeContact.id}
+                              contactName={activeContact.name}
+                              initialTags={activeContact.tags}
+                              allAvailableTags={[]}
+                              onTagsChange={(newTags) => {
+                                setContacts(prev => prev.map(c =>
+                                  c.id === activeContact.id ? { ...c, tags: newTags } : c
+                                ));
+                              }}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
