@@ -59,6 +59,14 @@ style.innerHTML = `
   .animate-fade-in-up {
     animation: fadeInUp 0.2s ease-out forwards;
   }
+  @keyframes highlight-pulse {
+    0% { background-color: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.4); }
+    50% { background-color: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.6); box-shadow: 0 0 15px rgba(59, 130, 246, 0.2); }
+    100% { background-color: transparent; border-color: transparent; }
+  }
+  .animate-highlight {
+    animation: highlight-pulse 1.5s ease-in-out infinite;
+  }
   .scrollbar-hide::-webkit-scrollbar {
       display: none;
   }
@@ -141,6 +149,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [showMoveDealModal, setShowMoveDealModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [dealToDelete, setDealToDelete] = useState<string | null>(null);
+  const [flashingContacts, setFlashingContacts] = useState<Set<string>>(new Set());
 
   // Channels and Filtering
   const [channels, setChannels] = useState<any[]>([]);
@@ -272,6 +281,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
       if (offset === 0) {
         setMessages(mappedMessages);
+
+        // Mark as read in backend and update local UI
+        fetch(`/api/chat/${contactId}/read`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        }).then(() => {
+          setContacts(prev => prev.map(c =>
+            c.id === contactId ? { ...c, unreadCount: 0 } : c
+          ));
+        }).catch(err => console.error('Error marking as read:', err));
+
       } else {
         // Prepend older messages
         setMessages(prev => [...mappedMessages, ...prev]);
@@ -638,6 +658,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       if (activeContactIdRef.current && messageContactId && activeContactIdRef.current == messageContactId) {
         fetchMessages(activeContactIdRef.current);
       }
+
+      // Trigger Flash Animation
+      if (messageContactId) {
+        setFlashingContacts(prev => new Set(prev).add(String(messageContactId)));
+        setTimeout(() => {
+          setFlashingContacts(prev => {
+            const next = new Set(prev);
+            next.delete(String(messageContactId));
+            return next;
+          });
+        }, 3000); // 3 seconds flash
+      }
     });
 
     socket.on('message_status_update', (data: any) => {
@@ -810,11 +842,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
           {contacts.map(contact => {
             const isActive = activeContactId === contact.id;
+            const isUnread = contact.unreadCount > 0;
+            const channelInfo = getChannelIcon(contact.channel);
+
             return (
               <div
                 key={contact.id}
                 onClick={() => setActiveContactId(contact.id)}
-                className={`p-3 flex gap-3 cursor-pointer transition-all duration-200 rounded-xl relative group ${isActive ? 'bg-white shadow-md ring-1 ring-slate-200 transform scale-[1.02]' : 'hover:bg-white hover:shadow-sm'}`}
+                className={`p-3 flex gap-3 cursor-pointer transition-all duration-200 rounded-xl relative group 
+                   border border-slate-200 mb-1.5 
+                   ${isActive
+                    ? 'bg-white shadow-md ring-1 ring-slate-300 transform scale-[1.02] z-10 border-transparent'
+                    : isUnread
+                      ? 'bg-blue-50/60 border-blue-200 shadow-sm border-l-4 border-l-blue-500'
+                      : 'bg-white hover:shadow-sm hover:border-blue-200'
+                  }`}
               >
                 {/* Active Indicator Vertical Bar */}
                 {isActive && <div className="absolute left-0 top-3 bottom-3 w-1 bg-gradient-to-b from-blue-500 to-teal-400 rounded-r-full"></div>}
@@ -829,14 +871,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
                 </div>
                 <div className="flex-1 min-w-0 py-0.5 flex flex-col justify-center">
-                  <div className="flex justify-between items-baseline mb-0.5">
+                  <div className="flex justify-between items-start mb-0.5">
                     <h3 className={`text-sm truncate mr-2 ${isActive ? 'font-bold text-slate-800' : 'font-semibold text-slate-700'}`}>{contact.name}</h3>
-                    <span className={`text-[10px] font-medium shrink-0 ${isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`}>{contact.lastMessageTime}</span>
+
+                    <div className="flex flex-col items-end">
+                      <span className={`text-[10px] font-medium shrink-0 ${isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`}>
+                        {contact.lastMessageTime}
+                      </span>
+                      {contact.unreadCount > 0 && (
+                        <div className={`mt-1.5 w-2.5 h-2.5 rounded-full ${channelInfo.badgeColor} animate-pulse shadow-sm ring-1 ring-white/50`}></div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Channel Badge - Visual e Destacado */}
                   {(() => {
-                    const channelInfo = getChannelIcon(contact.channel);
                     const ChannelIcon = channelInfo.icon;
                     return (
                       <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md mb-1 w-fit ${channelInfo.bg}`}>
@@ -851,9 +900,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                   <p className={`text-xs truncate flex items-center gap-1 ${isActive ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
                     {contact.lastMessage}
                   </p>
-                  <div className="mt-1">
-                    <TagBadge tags={contact.tags} maxVisible={1} />
-                  </div>
+
                 </div>
               </div>
             )

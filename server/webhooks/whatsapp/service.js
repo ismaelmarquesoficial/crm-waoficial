@@ -52,8 +52,8 @@ const WhatsAppService = {
 
         const insert = await db.query(
             `INSERT INTO chat_logs 
-            (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, media_url, file_name, direction, channel, timestamp, created_at) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'INBOUND', 'WhatsApp Business', $9::timestamptz, $9::timestamptz)
+            (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, media_url, file_name, direction, channel, status, timestamp, created_at) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'INBOUND', 'WhatsApp Business', 'unread', $9::timestamptz, $9::timestamptz)
             RETURNING *`,
             [tenantId, contactId, accountId, wamid, body, type, mediaUrl, fileName, timestamp.toISOString()]
         );

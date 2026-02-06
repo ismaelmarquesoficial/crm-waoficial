@@ -196,6 +196,22 @@ router.get('/:contactId/messages', async (req, res) => {
     }
 });
 
+// Marcar mensagens como lidas
+router.post('/:contactId/read', async (req, res) => {
+    const { contactId } = req.params;
+    try {
+        const tenantId = req.tenantId || (req.user && req.user.tenantId);
+        await db.query(
+            "UPDATE chat_logs SET status = 'read' WHERE contact_id = $1 AND tenant_id = $2 AND direction = 'INBOUND' AND status = 'unread'",
+            [contactId, tenantId]
+        );
+        res.json({ message: 'Mensagens marcadas como lidas' });
+    } catch (err) {
+        console.error('Erro ao marcar como lido:', err);
+        res.status(500).json({ error: 'Erro ao marcar como lido' });
+    }
+});
+
 // 3. Enviar Mensagem (Texto) - COM STICKY CHANNEL
 router.post('/:contactId/send', async (req, res) => {
     const { contactId } = req.params;
