@@ -200,6 +200,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [quickReplies, setQuickReplies] = useState<any[]>([]);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [quickReplySearch, setQuickReplySearch] = useState('');
+  const [selectedQuickReplyIndex, setSelectedQuickReplyIndex] = useState(0);
 
   useEffect(() => {
     // Fetch Company Variables on Mount
@@ -235,61 +236,42 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       const res = await fetch(`/api/channels/templates/all${query}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+
       if (res.ok) {
         const data = await res.json();
-        setTemplates(data);
+        setTemplates(Array.isArray(data) ? data : []);
       } else {
-        // Fallback Mock se falhar
-        setTemplates([
-          { id: 1, name: 'boas_vindas', components: [{ type: 'BODY', text: 'Olá {{1}}! Como posso ajudar você hoje?' }] },
-          { id: 2, name: 'ausencia', components: [{ type: 'BODY', text: 'No momento não estamos disponíveis. Retornaremos em breve.' }] }
-        ]);
+        setTemplates([]);
       }
     } catch (error) {
       console.error('Erro ao buscar templates', error);
+      setTemplates([]);
     } finally {
       setIsLoadingTemplates(false);
     }
   }, [currentChatChannel, selectedChannel]);
 
+  // Fetch templates on mount and when channel changes
   useEffect(() => {
-    if (showTemplateModal) {
-      fetchTemplates();
-    }
-  }, [showTemplateModal, fetchTemplates]);
+    fetchTemplates();
+  }, [fetchTemplates]);
 
   const handleUseTemplate = (template: any) => {
-    // Extrair texto do BODY
-    const bodyComponent = template.components?.find((c: any) => c.type === 'BODY');
-    let text = bodyComponent?.text || '';
+    const hasVariables = template.components?.some((comp: any) =>
+      comp.type === 'BODY' && comp.text && comp.text.includes('{{')
+    );
 
-    // Find ALL variables {{1}}, {{2}}...
-    const remainingVars = text.match(/\{\{\d+\}\}/g);
-    const uniqueVars = remainingVars ? Array.from(new Set(remainingVars)) : [];
+    if (hasVariables) {
+      const bodyComponent = template.components.find((c: any) => c.type === 'BODY');
+      const text = bodyComponent?.text || '';
+      const matches = text.match(/\{\{(\d+)\}\}/g) || [];
+      const uniqueVars = Array.from(new Set(matches.map((m: string) => m.replace(/[{}]/g, ''))));
 
-    // Identify Contact Name for {{1}}
-    let contactName = '';
-    if (activeContactId) {
-      const activeContact = contacts.find(c => String(c.id) === String(activeContactId));
-      if (activeContact) contactName = activeContact.name || activeContact.phone;
-    }
-
-    if (uniqueVars.length > 0) {
-      // Pre-fill {{1}}
-      const initialValues: Record<string, string> = {};
-      if (uniqueVars.includes('{{1}}') && contactName) {
-        initialValues['{{1}}'] = contactName;
-      }
-
-      // Open Variable Fill Modal
-      setPendingTemplateText(text);
+      setPendingTemplateObj(template);
+      setVariableValues({});
       setPendingVariables(uniqueVars);
-      setPendingTemplateObj(template); // Store for later
-      setVariableValues(initialValues); // Set pre-filled values
       setShowVariableFillModal(true);
     } else {
-      // No vars, use directly
-      setInputText(text || `Template: ${template.name}`);
 
       // Set Active Template (No params)
       const langCode = typeof template.language === 'string' ? template.language : (template.language?.code || 'pt_BR');
@@ -583,16 +565,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       const search = value.slice(1).toLowerCase();
       setQuickReplySearch(search);
       setShowQuickReplies(true);
+      setSelectedQuickReplyIndex(0); // Reset to first item
     } else {
       setShowQuickReplies(false);
       setQuickReplySearch('');
+      setSelectedQuickReplyIndex(0);
     }
   };
 
   const selectQuickReply = (message: string) => {
-    setInputText(message);
+    // Close dropdown first to avoid handleInputChange interference
     setShowQuickReplies(false);
     setQuickReplySearch('');
+    // Then set the message
+    setTimeout(() => {
+      setInputText(message);
+    }, 0);
   };
 
   const filteredQuickReplies = quickReplies.filter(qr =>
@@ -1819,18 +1807,34 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                     readOnly={!!activeTemplate}
                     onChange={(e) => handleInputChange(e.target.value)}
                     onKeyDown={(e) => {
+                      // If quick replies dropdown is open and Enter is pressed
+                      if (showQuickReplies && filteredQuickReplies.length > 0 && e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        selectQuickReply(filteredQuickReplies[selectedQuickReplyIndex].message);
+                        return;
+                      }
+
+                      // Normal Enter behavior - send message
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         handleSendMessage();
                       }
+
                       // Navigate quick replies with arrow keys
                       if (showQuickReplies && filteredQuickReplies.length > 0) {
                         if (e.key === 'ArrowDown') {
                           e.preventDefault();
-                          // Could add keyboard navigation here
+                          setSelectedQuickReplyIndex(prev =>
+                            prev < filteredQuickReplies.length - 1 ? prev + 1 : prev
+                          );
                         }
                         if (e.key === 'ArrowUp') {
                           e.preventDefault();
+                          setSelectedQuickReplyIndex(prev => prev > 0 ? prev - 1 : 0);
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setShowQuickReplies(false);
                         }
                       }
                     }}
@@ -1850,11 +1854,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         </p>
                       </div>
                       <div className="p-2 space-y-1">
-                        {filteredQuickReplies.map((qr: any) => (
+                        {filteredQuickReplies.map((qr: any, index: number) => (
                           <button
                             key={qr.id}
-                            onClick={() => selectQuickReply(qr.message)}
-                            className="w-full text-left p-3 rounded-xl hover:bg-amber-50 transition-colors group border border-transparent hover:border-amber-200"
+                            onMouseDown={(e) => {
+                              e.preventDefault(); // Prevent input blur
+                              selectQuickReply(qr.message);
+                            }}
+                            onMouseEnter={() => setSelectedQuickReplyIndex(index)}
+                            className={`w-full text-left p-3 rounded-xl transition-colors group border ${index === selectedQuickReplyIndex
+                                ? 'bg-amber-50 border-amber-200'
+                                : 'border-transparent hover:bg-amber-50 hover:border-amber-200'
+                              }`}
                           >
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-xs font-mono font-bold text-amber-600">/{qr.shortcut}</span>
