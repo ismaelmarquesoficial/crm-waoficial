@@ -154,6 +154,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [isLoadingDropdown, setIsLoadingDropdown] = useState(false);
   const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(null);
   const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+  const [isCreatingPipelineMode, setIsCreatingPipelineMode] = useState(false);
+
 
 
 
@@ -1084,6 +1086,31 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                                   <div className="px-3 py-2 border-b border-slate-50 mb-2 bg-slate-50/50 rounded-t-lg">
                                     <div className="flex items-center justify-between mb-1">
                                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Negócio #{index + 1}</p>
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          if (!confirm('Tem certeza que deseja remover este negócio?')) return;
+
+                                          const token = localStorage.getItem('token');
+                                          try {
+                                            await fetch(`/api/crm/deals/${deal.id}`, {
+                                              method: 'DELETE',
+                                              headers: { Authorization: `Bearer ${token}` }
+                                            });
+                                            setNotification({ type: 'success', message: 'Negócio removido!' });
+
+                                            setContactDetails((prev: any) => ({
+                                              ...prev,
+                                              deals: prev.deals.filter((d: any) => d.id !== deal.id)
+                                            }));
+                                            setTimeout(() => setNotification(null), 3000);
+                                          } catch (err) { console.error(err); }
+                                        }}
+                                        className="text-slate-400 hover:text-red-500 transition-colors p-0.5 rounded hover:bg-red-50"
+                                        title="Remover negócio"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
                                     </div>
                                     <div className="flex items-center justify-between">
                                       <p className="text-xs font-extrabold text-slate-800 truncate" title={deal.pipeline_name}>{deal.pipeline_name}</p>
@@ -1137,6 +1164,65 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                               >
                                 <Plus size={12} />
                                 Novo Negócio / Outro Funil
+                              </button>
+                            </div>
+                          </div>
+                        ) : isCreatingPipelineMode ? (
+                          <div className="p-3">
+                            <h3 className="text-xs font-bold text-slate-700 mb-3">Novo Funil Rápido</h3>
+                            <input
+                              autoFocus
+                              id="new-pipeline-input"
+                              className="w-full text-xs p-2 border border-slate-200 rounded-lg mb-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                              placeholder="Nome do funil (ex: Pós-Venda)"
+                              onKeyDown={async (e) => {
+                                if (e.key === 'Enter') {
+                                  const val = e.currentTarget.value;
+                                  if (!val.trim()) return;
+
+                                  const token = localStorage.getItem('token');
+                                  try {
+                                    await fetch('/api/crm/pipelines', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                      body: JSON.stringify({ name: val })
+                                    });
+                                    await fetchPipelinesData();
+                                    setIsCreatingPipelineMode(false);
+                                    setNotification({ type: 'success', message: 'Funil criado!' });
+                                    setTimeout(() => setNotification(null), 3000);
+                                  } catch (err) { console.error(err); }
+                                }
+                              }}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setIsCreatingPipelineMode(false)}
+                                className="flex-1 py-1.5 text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  const input = document.getElementById('new-pipeline-input') as HTMLInputElement;
+                                  if (!input || !input.value.trim()) return;
+
+                                  const token = localStorage.getItem('token');
+                                  try {
+                                    await fetch('/api/crm/pipelines', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                      body: JSON.stringify({ name: input.value })
+                                    });
+                                    await fetchPipelinesData();
+                                    setIsCreatingPipelineMode(false);
+                                    setNotification({ type: 'success', message: 'Funil criado!' });
+                                    setTimeout(() => setNotification(null), 3000);
+                                  } catch (err) { console.error(err); }
+                                }}
+                                className="flex-1 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
+                              >
+                                Criar
                               </button>
                             </div>
                           </div>
@@ -1205,6 +1291,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                                   )}
                                 </div>
                               ))}
+
+                              <button
+                                onClick={() => setIsCreatingPipelineMode(true)}
+                                className="w-full text-center p-2.5 text-xs text-blue-500 font-bold hover:bg-blue-50 rounded-lg mt-2 border border-dashed border-blue-200 transition-colors flex items-center justify-center gap-2"
+                              >
+                                <Plus size={14} />
+                                Criar Novo Funil
+                              </button>
                             </div>
                           </div>
                         )}
