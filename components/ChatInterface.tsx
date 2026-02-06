@@ -184,7 +184,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
+  const [newContactChannel, setNewContactChannel] = useState('');
   const [isAddingContact, setIsAddingContact] = useState(false);
+  const [currentChatChannel, setCurrentChatChannel] = useState<string | null>(null);
 
   useEffect(() => {
     // Fetch Company Variables on Mount
@@ -279,7 +281,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       const res = await fetch('/api/chat/contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ name: newContactName, phone: newContactPhone })
+        body: JSON.stringify({
+          name: newContactName,
+          phone: newContactPhone,
+          custom_fields: newContactChannel ? { preferred_channel: newContactChannel } : null
+        })
       });
 
       if (res.ok) {
@@ -304,6 +310,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
         setShowAddContactModal(false);
         setNewContactName('');
         setNewContactPhone('');
+        setNewContactChannel('');
         setNotification({ type: 'success', message: 'Contato adicionado!' });
       } else {
         setNotification({ type: 'error', message: 'Erro ao criar contato' });
@@ -435,12 +442,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
           content: (['image', 'audio', 'video', 'document'].includes(m.type) && m.media_url) ? m.media_url : m.message,
           timestamp: localTime,
           status: m.status || 'read',
-          fileName: m.file_name
+          fileName: m.file_name,
+          channelId: m.whatsapp_account_id // Added mapping
         };
       });
 
       if (offset === 0) {
         setMessages(mappedMessages);
+
+        // --- STICKY CHANNEL INIT ---
+        // Se houver mensagens, pega o channelId da mensagem MAIS RECENTE (última do array reverso)
+        // Se não houver messages, reseta para null ou usa o preferred do contato? 
+        // Por enquanto, inicializa vazio e o usuário seleciona ou usa automático.
+        if (mappedMessages.length > 0) {
+          const lastMsg = mappedMessages[mappedMessages.length - 1];
+          if (lastMsg.channelId) setCurrentChatChannel(lastMsg.channelId);
+        } else {
+          setCurrentChatChannel(null);
+        }
 
         // Mark as read in backend and update local UI
         fetch(`/api/chat/${contactId}/read`, {
@@ -481,7 +500,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       await fetch(`http://localhost:3001/api/chat/${activeContactId}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ type: 'text', content })
+        body: JSON.stringify({
+          type: 'text',
+          content,
+          channelId: currentChatChannel // Send manual selection
+        })
       });
       fetchMessages(activeContactId);
       fetchChats();
@@ -659,9 +682,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       console.error('Erro ao remover deal:', err);
       setNotification({ type: 'error', message: 'Erro ao remover do pipeline' });
       setTimeout(() => setNotification(null), 4000);
-    } finally {
-      setShowDeleteConfirm(false);
-      setDealToDelete(null);
     }
   };
 
@@ -1117,6 +1137,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                     {activeContact.email && (
                       <span className="text-[10px] md:text-xs text-blue-500 font-medium bg-blue-50 px-1.5 rounded truncate max-w-[150px]">{activeContact.email}</span>
                     )}
+
+                    {/* Canal Dropdown Manual */}
+                    <div className="relative group/channel">
+                      <div className="flex items-center gap-1 bg-slate-100/80 hover:bg-slate-200 px-2 py-0.5 rounded cursor-pointer transition-colors">
+                        <Layers size={10} className="text-slate-500" />
+                        <select
+                          value={currentChatChannel || ''}
+                          onChange={(e) => setCurrentChatChannel(e.target.value || null)}
+                          className="bg-transparent text-[10px] font-bold uppercase tracking-wider text-slate-600 outline-none cursor-pointer appearance-none pr-3"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <option value="">Auto</option>
+                          {channels.map((ch: any) => (
+                            <option key={ch.id} value={ch.id}>
+                              {ch.instance_name || ch.phone_number_id.slice(-4)}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={10} className="text-slate-400 absolute right-1 pointer-events-none" />
+                      </div>
+                    </div>
+
                     <span className="hidden md:inline text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Lead</span>
                     <div className="relative flex items-center">
                       <TagBadge tags={activeContact.tags} maxVisible={2} size="sm" />
@@ -2368,6 +2410,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
                 />
                 <p className="text-[10px] text-slate-400 px-1">Digite apenas números (com DDD).</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Canal de Envio (Opcional)</label>
+                <select
+                  value={newContactChannel}
+                  onChange={(e) => setNewContactChannel(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="">Automático (Padrão)</option>
+                  {channels.map((ch: any) => (
+                    <option key={ch.id} value={ch.id}>
+                      {ch.instance_name || ch.verified_name || ch.phone_number_id}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="pt-4 flex gap-3">

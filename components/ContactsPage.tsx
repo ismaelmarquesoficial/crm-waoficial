@@ -58,8 +58,9 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     const [showViewModal, setShowViewModal] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [contactToDelete, setContactToDelete] = useState<{ id: string, name: string } | null>(null);
-    const [newContact, setNewContact] = useState<{ name: string, phone: string, email: string, tags: string[], pipeline_id?: string, stage_id?: string }>({ name: '', phone: '', email: '', tags: [] });
+    const [newContact, setNewContact] = useState<{ name: string, phone: string, email: string, tags: string[], pipeline_id?: string, stage_id?: string, channel_id?: string }>({ name: '', phone: '', email: '', tags: [] });
     const [isDeleting, setIsDeleting] = useState<string | null>(null);
+    const [channels, setChannels] = useState<any[]>([]);
     const [isSavingContact, setIsSavingContact] = useState(false);
     const [pipelines, setPipelines] = useState<Pipeline[]>([]);
     const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -91,7 +92,22 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
         fetchContacts();
         fetchPipelines();
         fetchAllTags();
+        fetchChannels();
     }, []);
+
+    const fetchChannels = async () => {
+        try {
+            const response = await fetch('/api/channels', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setChannels(data);
+            }
+        } catch (err) {
+            console.error('Erro ao buscar canais:', err);
+        }
+    };
 
     const fetchAllTags = async () => {
         try {
@@ -355,6 +371,13 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
 
         setIsSavingContact(true);
         try {
+            const isDuplicate = contacts.some(c => c.phone.replace(/\D/g, '') === newContact.phone.replace(/\D/g, ''));
+            if (isDuplicate) {
+                setNotification({ message: 'Já existe um contato com este telefone.', type: 'error' });
+                setIsSavingContact(false);
+                return;
+            }
+
             // 1. Create Contact
             const contactRes = await fetch('/api/chat/contacts', {
                 method: 'POST',
@@ -363,7 +386,8 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                     name: newContact.name,
                     phone: newContact.phone,
                     email: newContact.email,
-                    tags: newContact.tags
+                    tags: newContact.tags,
+                    custom_fields: newContact.channel_id ? { preferred_channel: newContact.channel_id } : null
                 })
             });
 
@@ -962,16 +986,37 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                         placeholder="Ex: 5511999999999"
                                     />
                                 </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">E-mail</label>
+                                    <div className="relative">
+                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                        <input
+                                            type="email"
+                                            placeholder="email@exemplo.com"
+                                            value={newContact.email}
+                                            onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                                            className="pl-10 w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                    </div>
+                                </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">E-mail (Opcional)</label>
-                                    <input
-                                        type="email"
-                                        value={newContact.email}
-                                        onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-                                        className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                                        placeholder="joao@exemplo.com"
-                                    />
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Canal de Envio (Opcional)</label>
+                                    <div className="relative">
+                                        <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                        <select
+                                            value={newContact.channel_id || ''}
+                                            onChange={(e) => setNewContact({ ...newContact, channel_id: e.target.value })}
+                                            className="pl-10 w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none"
+                                        >
+                                            <option value="">Automático (Padrão)</option>
+                                            {channels.map((ch) => (
+                                                <option key={ch.id} value={ch.id}>
+                                                    {ch.instance_name || ch.verified_name || ch.phone_number_id}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 

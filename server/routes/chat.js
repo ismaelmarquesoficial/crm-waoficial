@@ -219,7 +219,7 @@ router.post('/:contactId/read', async (req, res) => {
 // 3. Enviar Mensagem (Texto) - COM STICKY CHANNEL
 router.post('/:contactId/send', async (req, res) => {
     const { contactId } = req.params;
-    const { type, content } = req.body;
+    const { type, content, channelId } = req.body;
 
     if (!content) return res.status(400).json({ error: 'Conteúdo vazio.' });
 
@@ -227,16 +227,18 @@ router.post('/:contactId/send', async (req, res) => {
         const tenantId = req.tenantId || (req.user && req.user.tenantId);
 
         // --- STICKY CHANNEL LOGIC ---
-        let channelIdToUse = null;
+        let channelIdToUse = channelId || null; // Prioriza o canal enviado no body
 
-        const lastMsgRes = await db.query(
-            "SELECT whatsapp_account_id FROM chat_logs WHERE contact_id = $1 ORDER BY timestamp DESC LIMIT 1",
-            [contactId]
-        );
+        if (!channelIdToUse) {
+            const lastMsgRes = await db.query(
+                "SELECT whatsapp_account_id FROM chat_logs WHERE contact_id = $1 ORDER BY timestamp DESC LIMIT 1",
+                [contactId]
+            );
 
-        if (lastMsgRes.rows.length > 0) {
-            channelIdToUse = lastMsgRes.rows[0].whatsapp_account_id;
-            console.log(`info: Mantendo conversa pelo canal ID: ${channelIdToUse}`);
+            if (lastMsgRes.rows.length > 0) {
+                channelIdToUse = lastMsgRes.rows[0].whatsapp_account_id;
+                console.log(`info: Mantendo conversa pelo canal ID: ${channelIdToUse}`);
+            }
         }
 
         // Buscar Canal
@@ -265,11 +267,18 @@ router.post('/:contactId/send', async (req, res) => {
 
         const channel = channelRes.rows[0];
 
-        // Buscar Telefone
-        const contactRes = await db.query("SELECT phone FROM contacts WHERE id = $1", [contactId]);
+        // Buscar Telefone e Preferências
+        const contactRes = await db.query("SELECT phone, custom_fields FROM contacts WHERE id = $1", [contactId]);
         if (contactRes.rows.length === 0) return res.status(404).json({ error: 'Contato não encontrado.' });
 
-        const contactPhone = contactRes.rows[0].phone;
+        const contactData = contactRes.rows[0];
+        const contactPhone = contactData.phone;
+
+        // Fallback: Se não tem histórico e não veio no body, tenta pegar do custom_fields
+        if (!channelIdToUse && contactData.custom_fields && contactData.custom_fields.preferred_channel) {
+            channelIdToUse = contactData.custom_fields.preferred_channel;
+            console.log(`info: Usando canal preferencial do contato: ${channelIdToUse}`);
+        }
 
         // Enviar para Meta API
         const url = `https://graph.facebook.com/v19.0/${channel.phone_number_id}/messages`;
@@ -387,7 +396,7 @@ router.delete('/contacts/:contactId/tags/:tag', async (req, res) => {
 // Criar contato manualmente
 router.post('/contacts', async (req, res) => {
     try {
-        const { name, phone, email, tags } = req.body;
+        const { name, phone, email, tags, custom_fields } = req.body;
         const tenantId = req.tenantId || (req.user && req.user.tenantId);
 
         if (!name || !phone) {
@@ -401,8 +410,8 @@ router.post('/contacts', async (req, res) => {
         }
 
         const result = await db.query(
-            'INSERT INTO contacts (tenant_id, name, phone, email, tags, channel, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *',
-            [tenantId, name, phone, email || null, tags || [], 'Manual']
+            'INSERT INTO contacts (tenant_id, name, phone, email, tags, channel, custom_fields, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING *',
+            [tenantId, name, phone, email || null, tags || [], 'Manual', custom_fields || null]
         );
 
         res.status(201).json(result.rows[0]);
