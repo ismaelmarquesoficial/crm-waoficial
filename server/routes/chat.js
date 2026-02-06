@@ -435,9 +435,8 @@ router.post('/:contactId/send', async (req, res) => {
             messageLogContent = `[${msgType.toUpperCase()}]${filename}${caption}`;
         }
         else if (msgType === 'interactive') {
-            const interactiveBody = req.body.interactive?.body?.text || '';
-            const interactiveType = req.body.interactive?.type === 'list' ? 'MENU' : 'BOTÕES';
-            messageLogContent = `[${interactiveType}] ${interactiveBody}`;
+            // Save full content as JSON for rich rendering in frontend
+            messageLogContent = JSON.stringify(req.body.interactive);
         }
 
         const insert = await db.query(

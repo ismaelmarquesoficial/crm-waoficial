@@ -1816,6 +1816,42 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       }`}>
                       {msg.type === MessageType.TEXT && <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
 
+                      {/* Interactive Messages (Buttons / Lists) */}
+                      {(msg.type as any) === 'interactive' && (() => {
+                        try {
+                          const data = JSON.parse(msg.content);
+                          return (
+                            <div className="flex flex-col gap-1.5 min-w-[200px]">
+                              {/* Header */}
+                              {data.header?.text && <p className="font-bold text-sm mb-1">{data.header.text}</p>}
+
+                              {/* Body */}
+                              <p className="whitespace-pre-wrap leading-relaxed">{data.body?.text}</p>
+
+                              {/* Footer */}
+                              {data.footer?.text && <p className="text-[10px] opacity-70 mt-1">{data.footer.text}</p>}
+
+                              {/* Buttons / Actions */}
+                              <div className="mt-2 space-y-1.5">
+                                {data.type === 'button' && data.action?.buttons?.map((b: any, i: number) => (
+                                  <div key={i} className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm transition-all ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
+                                    {b.reply?.title}
+                                  </div>
+                                ))}
+                                {data.type === 'list' && (
+                                  <div className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm flex items-center justify-center gap-2 ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
+                                    <List size={14} />
+                                    {data.action?.button || 'Ver Opções'}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        } catch (e) {
+                          return <p className="leading-relaxed whitespace-pre-wrap text-xs opacity-70 italic">[Mensagem Interativa]</p>;
+                        }
+                      })()}
+
                       {msg.type === MessageType.AUDIO && <AudioPlayer isUser={msg.sender === 'user'} />}
 
                       {msg.type === MessageType.IMAGE && (
