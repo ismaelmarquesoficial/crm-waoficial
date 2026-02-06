@@ -284,8 +284,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
         language: { code: langCode },
         components: []
       });
-      setShowTemplateModal(false);
     }
+
+    // Always close the template list modal
+    setShowTemplateModal(false);
   };
 
   const finalizeTemplate = () => {
