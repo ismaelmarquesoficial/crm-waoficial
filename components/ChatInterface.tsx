@@ -29,7 +29,11 @@ import {
   Phone,
   TrendingUp,
   Edit3,
-  Plus
+  Plus,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  MoveRight
 } from 'lucide-react';
 import TagBadge from './TagBadge';
 import TagManager from './TagManager';
@@ -110,9 +114,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [contactDetails, setContactDetails] = useState<any>(null);
   const [showTagManagerModal, setShowTagManagerModal] = useState(false);
   const [showPipelineModal, setShowPipelineModal] = useState(false);
+  const [showCreatePipelineModal, setShowCreatePipelineModal] = useState(false);
   const [pipelines, setPipelines] = useState<any[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<string>('');
   const [selectedStage, setSelectedStage] = useState<string>('');
+
+  // Create Pipeline States
+  const [newPipelineName, setNewPipelineName] = useState('');
+  const [newPipelineStages, setNewPipelineStages] = useState<{ name: string, color: string }[]>([
+    { name: 'Novo Lead', color: '#3b82f6' },
+    { name: 'Contato Inicial', color: '#8b5cf6' },
+    { name: 'Proposta Enviada', color: '#f59e0b' },
+    { name: 'Negociação', color: '#10b981' },
+    { name: 'Fechado', color: '#22c55e' }
+  ]);
+  const [isCreatingPipeline, setIsCreatingPipeline] = useState(false);
+
+  // Notification Toast
+  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
+  // Deal Management
+  const [selectedDeal, setSelectedDeal] = useState<any>(null);
+  const [showMoveDealModal, setShowMoveDealModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [dealToDelete, setDealToDelete] = useState<string | null>(null);
 
   // Channels and Filtering
   const [channels, setChannels] = useState<any[]>([]);
@@ -126,6 +151,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const contactModalRef = useRef<HTMLDivElement>(null);
+  const tagModalRef = useRef<HTMLDivElement>(null);
+  const pipelineModalRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -136,8 +163,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
         setShowEmojiPicker(false);
       }
+      // Só fecha o modal de contato se não estiver clicando nos sub-modais
       if (contactModalRef.current && !contactModalRef.current.contains(event.target as Node)) {
-        setShowContactInfo(false);
+        const clickedOnTagModal = tagModalRef.current && tagModalRef.current.contains(event.target as Node);
+        const clickedOnPipelineModal = pipelineModalRef.current && pipelineModalRef.current.contains(event.target as Node);
+
+        if (!clickedOnTagModal && !clickedOnPipelineModal) {
+          setShowContactInfo(false);
+        }
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -329,11 +362,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          contact_id: contactDetails.id,
+          name: contactDetails.name,
+          phone: contactDetails.phone,
+          value: 0,
           pipeline_id: selectedPipeline,
-          stage_id: selectedStage,
-          title: contactDetails.name,
-          value: 0
+          stage_id: selectedStage
         })
       });
 
@@ -343,9 +376,145 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
         setShowPipelineModal(false);
         setSelectedPipeline('');
         setSelectedStage('');
+        setNotification({ type: 'success', message: 'Contato adicionado ao pipeline com sucesso!' });
+        setTimeout(() => setNotification(null), 4000);
+      } else {
+        const error = await res.json();
+        setNotification({ type: 'error', message: error.error || 'Erro ao adicionar ao pipeline' });
+        setTimeout(() => setNotification(null), 4000);
       }
     } catch (err) {
       console.error('Erro ao mover para pipeline:', err);
+      setNotification({ type: 'error', message: 'Erro ao adicionar ao pipeline' });
+      setTimeout(() => setNotification(null), 4000);
+    }
+  };
+
+  const handleAddStage = () => {
+    setNewPipelineStages([...newPipelineStages, { name: '', color: '#6366f1' }]);
+  };
+
+  const handleRemoveStage = (index: number) => {
+    if (newPipelineStages.length > 1) {
+      setNewPipelineStages(newPipelineStages.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleUpdateStage = (index: number, field: 'name' | 'color', value: string) => {
+    const updated = [...newPipelineStages];
+    updated[index][field] = value;
+    setNewPipelineStages(updated);
+  };
+
+  const handleCreatePipeline = async () => {
+    if (!newPipelineName.trim() || newPipelineStages.some(s => !s.name.trim())) {
+      alert('Preencha o nome do pipeline e de todas as etapas');
+      return;
+    }
+
+    setIsCreatingPipeline(true);
+    const token = localStorage.getItem('token');
+
+    try {
+      const res = await fetch('/api/crm/pipelines', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: newPipelineName,
+          stages: newPipelineStages.map((stage, index) => ({
+            name: stage.name,
+            color: stage.color,
+            order_index: index
+          }))
+        })
+      });
+
+      if (res.ok) {
+        // Recarregar pipelines
+        await fetchPipelinesData();
+        // Fechar modal de criar e resetar
+        setShowCreatePipelineModal(false);
+        setNewPipelineName('');
+        setNewPipelineStages([
+          { name: 'Novo Lead', color: '#3b82f6' },
+          { name: 'Contato Inicial', color: '#8b5cf6' },
+          { name: 'Proposta Enviada', color: '#f59e0b' },
+          { name: 'Negociação', color: '#10b981' },
+          { name: 'Fechado', color: '#22c55e' }
+        ]);
+      }
+    } catch (err) {
+      console.error('Erro ao criar pipeline:', err);
+    } finally {
+      setIsCreatingPipeline(false);
+    }
+  };
+
+
+  const handleRemoveDeal = async () => {
+    if (!dealToDelete) return;
+
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/crm/deals/${dealToDelete}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        await fetchContactDetails(contactDetails.id);
+        setNotification({ type: 'success', message: 'Removido do pipeline com sucesso!' });
+        setTimeout(() => setNotification(null), 4000);
+      } else {
+        setNotification({ type: 'error', message: 'Erro ao remover do pipeline' });
+        setTimeout(() => setNotification(null), 4000);
+      }
+    } catch (err) {
+      console.error('Erro ao remover deal:', err);
+      setNotification({ type: 'error', message: 'Erro ao remover do pipeline' });
+      setTimeout(() => setNotification(null), 4000);
+    } finally {
+      setShowDeleteConfirm(false);
+      setDealToDelete(null);
+    }
+  };
+
+  const handleMoveDeal = async () => {
+    if (!selectedDeal || !selectedStage) return;
+
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/crm/deals/${selectedDeal.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          stage_id: selectedStage,
+          pipeline_id: selectedPipeline || selectedDeal.pipeline_id
+        })
+      });
+
+      if (res.ok) {
+        await fetchContactDetails(contactDetails.id);
+        setShowMoveDealModal(false);
+        setSelectedDeal(null);
+        setSelectedPipeline('');
+        setSelectedStage('');
+        setNotification({ type: 'success', message: 'Movido com sucesso!' });
+        setTimeout(() => setNotification(null), 4000);
+      } else {
+        setNotification({ type: 'error', message: 'Erro ao mover' });
+        setTimeout(() => setNotification(null), 4000);
+      }
+    } catch (err) {
+      console.error('Erro ao mover deal:', err);
+      setNotification({ type: 'error', message: 'Erro ao mover' });
+      setTimeout(() => setNotification(null), 4000);
     }
   };
 
@@ -893,7 +1062,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         Gerenciar
                       </button>
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 max-h-[120px] overflow-y-auto">
                       {contactDetails.tags && contactDetails.tags.length > 0 ? (
                         <TagBadge tags={contactDetails.tags} maxVisible={5} size="md" />
                       ) : (
@@ -918,15 +1087,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         Adicionar
                       </button>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
                       {contactDetails.deals && contactDetails.deals.length > 0 ? (
                         contactDetails.deals.map((deal: any) => (
-                          <div key={deal.id} className="p-3 bg-white rounded-xl border border-slate-100 shadow-sm border-l-4" style={{ borderLeftColor: deal.stage_color }}>
-                            <div className="flex items-center justify-between mb-0.5">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase">{deal.pipeline_name}</p>
-                              <Layers size={12} className="text-slate-300" />
+                          <div key={deal.id} className="group p-3 bg-white rounded-xl border border-slate-100 shadow-sm border-l-4 hover:shadow-md transition-all" style={{ borderLeftColor: deal.stage_color }}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase">{deal.pipeline_name}</p>
+                                  <Layers size={12} className="text-slate-300" />
+                                </div>
+                                <p className="text-xs font-bold text-slate-700">{deal.stage_name}</p>
+                              </div>
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => {
+                                    setSelectedDeal(deal);
+                                    setSelectedPipeline(deal.pipeline_id);
+                                    setSelectedStage(deal.stage_id);
+                                    setShowMoveDealModal(true);
+                                    fetchPipelinesData();
+                                  }}
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Mover"
+                                >
+                                  <MoveRight size={14} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setDealToDelete(deal.id);
+                                    setShowDeleteConfirm(true);
+                                  }}
+                                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Remover"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </div>
-                            <p className="text-xs font-bold text-slate-700">{deal.stage_name}</p>
                           </div>
                         ))
                       ) : (
@@ -955,8 +1153,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
       {/* Modal de Gerenciamento de Tags */}
       {showTagManagerModal && contactDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-fade-in">
-          <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[75] p-4 animate-fade-in">
+          <div ref={tagModalRef} className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
             <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-5 relative overflow-hidden">
               <div className="flex items-center justify-between relative z-10">
                 <div className="flex items-center gap-3">
@@ -988,8 +1186,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
       {/* Modal de Adicionar ao Pipeline */}
       {showPipelineModal && contactDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-fade-in">
-          <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[75] p-4 animate-fade-in">
+          <div ref={pipelineModalRef} className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
             <div className="bg-gradient-to-r from-green-600 to-emerald-500 p-5 relative overflow-hidden">
               <div className="flex items-center justify-between relative z-10">
                 <div className="flex items-center gap-3">
@@ -1008,23 +1206,196 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
               </div>
             </div>
             <div className="p-5 space-y-4">
+              {pipelines.length === 0 ? (
+                <div className="text-center py-8 space-y-4">
+                  <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto">
+                    <Layers size={32} className="text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-700 mb-1">Nenhum Pipeline Cadastrado</h3>
+                    <p className="text-xs text-slate-500">Crie seu primeiro funil de vendas para organizar seus contatos</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowCreatePipelineModal(true);
+                    }}
+                    className="w-full bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                  >
+                    <Plus size={18} strokeWidth={3} />
+                    Criar Primeiro Pipeline
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Pipeline</label>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setShowCreatePipelineModal(true);
+                        }}
+                        className="text-[10px] font-bold text-green-600 hover:text-green-700 flex items-center gap-1"
+                      >
+                        <Plus size={12} />
+                        Novo
+                      </button>
+                    </div>
+                    <select
+                      value={selectedPipeline}
+                      onChange={(e) => {
+                        setSelectedPipeline(e.target.value);
+                        setSelectedStage('');
+                      }}
+                      className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-green-500 transition-all outline-none"
+                    >
+                      <option value="">Escolha um funil...</option>
+                      {pipelines.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedPipeline && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Estágio</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {pipelines.find(p => p.id === parseInt(selectedPipeline))?.stages.map((stage: any) => (
+                          <button
+                            key={stage.id}
+                            type="button"
+                            onClick={() => setSelectedStage(stage.id)}
+                            className={`p-3 rounded-xl text-[10px] font-bold border-2 transition-all flex flex-col items-center gap-1 ${String(selectedStage) === String(stage.id)
+                              ? 'bg-green-50 border-green-500 shadow-sm'
+                              : 'bg-white border-slate-100 text-slate-500'
+                              }`}
+                          >
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }}></div>
+                            {stage.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleMoveToPipeline();
+                    }}
+                    disabled={!selectedPipeline || !selectedStage}
+                    className="w-full bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                  >
+                    <Plus size={18} strokeWidth={3} />
+                    Adicionar ao Pipeline
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Remoção */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[85] p-4 animate-fade-in">
+          <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+            <div className="bg-gradient-to-r from-red-600 to-orange-500 p-5">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                  <AlertCircle className="text-white" size={24} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Confirmar Remoção</h2>
+                  <p className="text-[10px] text-white/80 font-medium">Esta ação não pode ser desfeita</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <p className="text-sm text-slate-700 mb-6">
+                Tem certeza que deseja <span className="font-bold">remover este contato do pipeline</span>?
+                Esta ação é permanente e não poderá ser desfeita.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setDealToDelete(null);
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-all font-bold text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRemoveDeal}
+                  className="flex-1 bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                >
+                  <Trash2 size={18} strokeWidth={3} />
+                  Remover
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Mover Deal */}
+      {showMoveDealModal && selectedDeal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[75] p-4 animate-fade-in">
+          <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+            <div className="bg-gradient-to-r from-blue-600 to-emerald-500 p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <MoveRight className="text-white" size={20} />
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Mover Negócio</h2>
+                    <p className="text-[10px] text-white/80 font-medium">{selectedDeal.pipeline_name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowMoveDealModal(false);
+                    setSelectedDeal(null);
+                    setSelectedPipeline('');
+                    setSelectedStage('');
+                  }}
+                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
+                >
+                  <X size={18} strokeWidth={2.5} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Seletor de Pipeline */}
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Pipeline</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Escolher Funil</label>
                 <select
                   value={selectedPipeline}
                   onChange={(e) => {
                     setSelectedPipeline(e.target.value);
                     setSelectedStage('');
                   }}
-                  className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-green-500 transition-all outline-none"
+                  className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 >
-                  <option value="">Escolha um funil...</option>
-                  {pipelines.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
+                  {pipelines.map((pipeline: any) => (
+                    <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>
                   ))}
                 </select>
               </div>
 
+              {/* Seletor de Estágio */}
               {selectedPipeline && (
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Estágio</label>
@@ -1035,28 +1406,178 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         type="button"
                         onClick={() => setSelectedStage(stage.id)}
                         className={`p-3 rounded-xl text-[10px] font-bold border-2 transition-all flex flex-col items-center gap-1 ${String(selectedStage) === String(stage.id)
-                            ? 'bg-green-50 border-green-500 shadow-sm'
-                            : 'bg-white border-slate-100 text-slate-500'
+                          ? 'bg-blue-50 border-blue-500 shadow-sm'
+                          : 'bg-slate-50 border-slate-200 hover:border-blue-300'
                           }`}
                       >
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }}></div>
-                        {stage.name}
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }}></div>
+                        <span className="text-center leading-tight">{stage.name}</span>
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              <button
-                onClick={handleMoveToPipeline}
-                disabled={!selectedPipeline || !selectedStage}
-                className="w-full bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
-              >
-                <Plus size={18} strokeWidth={3} />
-                Adicionar ao Pipeline
-              </button>
+              {/* Botões */}
+              <div className="flex gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoveDealModal(false);
+                    setSelectedDeal(null);
+                    setSelectedPipeline('');
+                    setSelectedStage('');
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-all font-bold text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleMoveDeal}
+                  disabled={!selectedStage}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-emerald-500 hover:from-blue-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                >
+                  <MoveRight size={18} strokeWidth={3} />
+                  Mover
+                </button>
+              </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Modal de Criar Novo Pipeline */}
+      {showCreatePipelineModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-fade-in">
+          <div className="bg-white rounded-[2rem] max-w-lg w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-emerald-500 p-5 relative overflow-hidden sticky top-0 z-10">
+              <div className="flex items-center justify-between relative z-10">
+                <div className="flex items-center gap-3">
+                  <Layers className="text-white" size={20} />
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Criar Novo Pipeline</h2>
+                    <p className="text-[10px] text-white/80 font-medium">Configure seu funil de vendas</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCreatePipelineModal(false)}
+                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
+                >
+                  <X size={18} strokeWidth={2.5} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Nome do Pipeline */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nome do Pipeline</label>
+                <input
+                  type="text"
+                  value={newPipelineName}
+                  onChange={(e) => setNewPipelineName(e.target.value)}
+                  placeholder="Ex: Vendas B2B, Atendimento..."
+                  className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                />
+              </div>
+
+              {/* Etapas */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Etapas do Funil</label>
+                  <button
+                    type="button"
+                    onClick={handleAddStage}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                  >
+                    <Plus size={12} />
+                    Adicionar
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {newPipelineStages.map((stage, index) => (
+                    <div key={index} className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <input
+                        type="color"
+                        value={stage.color}
+                        onChange={(e) => handleUpdateStage(index, 'color', e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer border-2 border-white shadow-sm"
+                      />
+                      <input
+                        type="text"
+                        value={stage.name}
+                        onChange={(e) => handleUpdateStage(index, 'name', e.target.value)}
+                        placeholder={`Etapa ${index + 1}`}
+                        className="flex-1 bg-white border-0 p-2.5 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                      />
+                      {newPipelineStages.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveStage(index)}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Botões */}
+              <div className="flex gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowCreatePipelineModal(false)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-all font-bold text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreatePipeline}
+                  disabled={isCreatingPipeline || !newPipelineName.trim()}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-emerald-500 hover:from-blue-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                >
+                  {isCreatingPipeline ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Criando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={18} strokeWidth={3} />
+                      Criar Pipeline
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sistema de Notificação (Toast) */}
+      {notification && (
+        <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl animate-slide-up border border-white/20 backdrop-blur-md ${notification.type === 'success'
+          ? 'bg-emerald-500/90 text-white'
+          : 'bg-red-500/90 text-white'
+          }`}>
+          {notification.type === 'success' ? (
+            <CheckCircle2 size={20} className="text-emerald-100" />
+          ) : (
+            <AlertCircle size={20} className="text-red-100" />
+          )}
+          <p className="text-sm font-bold tracking-tight">{notification.message}</p>
+          <button
+            onClick={() => setNotification(null)}
+            className="ml-2 p-1 hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
     </div>

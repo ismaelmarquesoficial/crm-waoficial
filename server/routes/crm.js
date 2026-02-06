@@ -390,4 +390,39 @@ router.delete('/pipelines/:id', verifyToken, async (req, res) => {
     }
 });
 
+// Excluir Deal
+router.delete('/deals/:id', verifyToken, async (req, res) => {
+    const { id } = req.params;
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+    try {
+        // Verifica se o deal existe e pertence ao tenant
+        const check = await db.query('SELECT id, pipeline_id FROM deals WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+        if (check.rows.length === 0) {
+            return res.status(404).json({ error: 'Deal não encontrado' });
+        }
+
+        const pipelineId = check.rows[0].pipeline_id;
+
+        // Deletar deal
+        await db.query('DELETE FROM deals WHERE id = $1', [id]);
+
+        // Emitir evento socket
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`tenant_${tenantId}`).emit('crm_deal_update', {
+                type: 'deleted',
+                dealId: id,
+                pipelineId: pipelineId
+            });
+        }
+
+        res.json({ message: 'Deal excluído com sucesso' });
+
+    } catch (err) {
+        console.error('Erro ao excluir deal:', err);
+        res.status(500).json({ error: 'Erro ao excluir deal: ' + err.message });
+    }
+});
+
 module.exports = router;
