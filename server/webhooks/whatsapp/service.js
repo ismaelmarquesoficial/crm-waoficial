@@ -12,22 +12,17 @@ const WhatsAppService = {
         );
 
         if (res.rows.length > 0) {
-            // Atualiza última interação e nome se mudou (opcional, aqui só atualizamos last_interaction)
+            // Atualiza última interação e garante que o canal está setado
             await db.query(
-                "UPDATE contacts SET last_interaction = NOW() WHERE id = $1",
+                "UPDATE contacts SET last_interaction = NOW(), channel = COALESCE(channel, 'WhatsApp Business') WHERE id = $1",
                 [res.rows[0].id]
             );
             return res.rows[0].id;
         } else {
-            // Cria novo
-            // Se precisar de um estágio padrão, pegamos o primeiro do pipeline padrao ou setamos NULL
-            // Por simplicidade, vamos deixar null ou pegar o primeiro stage se existir lógica para isso.
-            // Aqui vamos inserir sem stage_id inicial ou 0 se o banco permitir.
-            // O schema diz integer, nullable.
-
+            // Cria novo contato com canal WhatsApp Business
             const insert = await db.query(
-                "INSERT INTO contacts (tenant_id, phone, name, last_interaction, created_at) VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id",
-                [tenantId, phone, pushName || phone]
+                "INSERT INTO contacts (tenant_id, phone, name, channel, last_interaction, created_at) VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING id",
+                [tenantId, phone, pushName || phone, 'WhatsApp Business']
             );
             return insert.rows[0].id;
         }
@@ -57,8 +52,8 @@ const WhatsAppService = {
 
         const insert = await db.query(
             `INSERT INTO chat_logs 
-            (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, media_url, file_name, direction, timestamp, created_at) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'INBOUND', $9::timestamptz, $9::timestamptz)
+            (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, media_url, file_name, direction, channel, timestamp, created_at) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'INBOUND', 'WhatsApp Business', $9::timestamptz, $9::timestamptz)
             RETURNING *`,
             [tenantId, contactId, accountId, wamid, body, type, mediaUrl, fileName, timestamp.toISOString()]
         );

@@ -32,6 +32,7 @@ router.get('/', async (req, res) => {
                 c.email,
                 c.last_interaction,
                 c.tags,
+                c.channel,
                 (SELECT message FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message,
                 (SELECT type FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message_type,
                 (SELECT timestamp FROM chat_logs WHERE contact_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message_time,
@@ -275,8 +276,8 @@ router.post('/:contactId/send', async (req, res) => {
 
         const insert = await db.query(
             `INSERT INTO chat_logs 
-            (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, direction, status, timestamp, created_at) 
-            VALUES ($1, $2, $3, $4, $5, 'text', 'OUTBOUND', 'sent', $6::timestamptz, $6::timestamptz)
+            (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, direction, status, channel, timestamp, created_at) 
+            VALUES ($1, $2, $3, $4, $5, 'text', 'OUTBOUND', 'sent', 'WhatsApp Business', $6::timestamptz, $6::timestamptz)
             RETURNING *`,
             [tenantId, contactId, channel.id, wamid, content, timestamp.toISOString()]
         );
@@ -380,8 +381,8 @@ router.post('/contacts', async (req, res) => {
         }
 
         const result = await db.query(
-            'INSERT INTO contacts (tenant_id, name, phone, email, tags, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *',
-            [tenantId, name, phone, email || null, tags || []]
+            'INSERT INTO contacts (tenant_id, name, phone, email, tags, channel, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *',
+            [tenantId, name, phone, email || null, tags || [], 'Manual']
         );
 
         res.status(201).json(result.rows[0]);

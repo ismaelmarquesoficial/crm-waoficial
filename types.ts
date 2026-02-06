@@ -18,6 +18,7 @@ export interface Contact {
   tags: string[];
   email?: string;
   company?: string;
+  channel?: string;
   notes?: string;
 }
 

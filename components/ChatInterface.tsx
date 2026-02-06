@@ -33,7 +33,10 @@ import {
   Trash2,
   CheckCircle2,
   AlertCircle,
-  MoveRight
+  MoveRight,
+  Instagram,
+  MessageSquare,
+  Globe
 } from 'lucide-react';
 import TagBadge from './TagBadge';
 import TagManager from './TagManager';
@@ -541,6 +544,54 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     scrollToBottom();
   }, [messages, isLoading]);
 
+  // Helper para ícone de canal
+  const getChannelIcon = (channel: string) => {
+    const channelLower = channel?.toLowerCase() || '';
+
+    if (channelLower.includes('waba') || channelLower.includes('business')) {
+      return {
+        icon: MessageSquare,
+        color: 'text-green-700',
+        bg: 'bg-green-100',
+        label: 'WhatsApp Business',
+        badgeColor: 'bg-green-600'
+      };
+    } else if (channelLower.includes('whatsapp') || channelLower.includes('oficial')) {
+      return {
+        icon: MessageSquare,
+        color: 'text-emerald-700',
+        bg: 'bg-emerald-100',
+        label: 'WhatsApp',
+        badgeColor: 'bg-emerald-600'
+      };
+    } else if (channelLower.includes('instagram')) {
+      return {
+        icon: Instagram,
+        color: 'text-pink-700',
+        bg: 'bg-pink-100',
+        label: 'Instagram',
+        badgeColor: 'bg-pink-600'
+      };
+    } else if (channelLower.includes('site') || channelLower.includes('web')) {
+      return {
+        icon: Globe,
+        color: 'text-blue-700',
+        bg: 'bg-blue-100',
+        label: 'Site',
+        badgeColor: 'bg-blue-600'
+      };
+    } else {
+      // Default: Considerar como WhatsApp se não houver info, pois é o canal principal
+      return {
+        icon: MessageSquare,
+        color: 'text-emerald-700',
+        bg: 'bg-emerald-100',
+        label: 'WhatsApp',
+        badgeColor: 'bg-emerald-600'
+      };
+    }
+  };
+
   // Infinite scroll: load more messages when scrolling to top
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -775,12 +826,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       {contact.unreadCount}
                     </span>
                   }
+
                 </div>
                 <div className="flex-1 min-w-0 py-0.5 flex flex-col justify-center">
                   <div className="flex justify-between items-baseline mb-0.5">
                     <h3 className={`text-sm truncate mr-2 ${isActive ? 'font-bold text-slate-800' : 'font-semibold text-slate-700'}`}>{contact.name}</h3>
                     <span className={`text-[10px] font-medium shrink-0 ${isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`}>{contact.lastMessageTime}</span>
                   </div>
+
+                  {/* Channel Badge - Visual e Destacado */}
+                  {(() => {
+                    const channelInfo = getChannelIcon(contact.channel);
+                    const ChannelIcon = channelInfo.icon;
+                    return (
+                      <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md mb-1 w-fit ${channelInfo.bg}`}>
+                        <ChannelIcon size={11} strokeWidth={2.5} className={channelInfo.color} />
+                        <span className={`text-[9px] font-bold uppercase tracking-wide ${channelInfo.color}`}>
+                          {channelInfo.label}
+                        </span>
+                      </div>
+                    );
+                  })()}
+
                   <p className={`text-xs truncate flex items-center gap-1 ${isActive ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
                     {contact.lastMessage}
                   </p>
