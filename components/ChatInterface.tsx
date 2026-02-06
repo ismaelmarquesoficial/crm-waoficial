@@ -180,6 +180,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [pendingVariables, setPendingVariables] = useState<string[]>([]);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
+  // Quick Add Contact
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
+  const [isAddingContact, setIsAddingContact] = useState(false);
+
   useEffect(() => {
     // Fetch Company Variables on Mount
     const token = localStorage.getItem('token');
@@ -262,6 +268,52 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     });
     setInputText(finalText);
     setShowVariableFillModal(false);
+  };
+
+  const handleQuickAddContact = async () => {
+    if (!newContactName.trim() || !newContactPhone.trim()) return;
+
+    setIsAddingContact(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/chat/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: newContactName, phone: newContactPhone })
+      });
+
+      if (res.ok) {
+        const newContact = await res.json();
+        // Atualizar lista
+        const formattedContact = {
+          id: newContact.id,
+          name: newContact.name,
+          phone: newContact.phone,
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(newContact.name)}&background=random`,
+          lastMessage: 'Nova conversa',
+          lastMessageTime: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          unreadCount: 0,
+          tags: []
+        };
+        setContacts(prev => [formattedContact, ...prev]);
+
+        // Abrir conversa
+        setActiveContactId(newContact.id);
+
+        // Limpar e fechar
+        setShowAddContactModal(false);
+        setNewContactName('');
+        setNewContactPhone('');
+        setNotification({ type: 'success', message: 'Contato adicionado!' });
+      } else {
+        setNotification({ type: 'error', message: 'Erro ao criar contato' });
+      }
+    } catch (e) {
+      console.error(e);
+      setNotification({ type: 'error', message: 'Erro de conexão' });
+    } finally {
+      setIsAddingContact(false);
+    }
   };
 
   // 2. Refs
@@ -930,12 +982,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
         <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1 scrollbar-hide">
           <div className="flex justify-between items-center px-2 mb-2 mt-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inbox ({contacts.length})</span>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg transition-colors ${showFilters ? 'bg-blue-100 text-blue-700' : 'text-slate-400 hover:bg-slate-100'}`}
-            >
-              <Filter size={12} /> Filtros
-            </button>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setShowAddContactModal(true)}
+                className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100"
+                title="Novo Contato"
+              >
+                <Plus size={12} /> Novo
+              </button>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg transition-colors ${showFilters ? 'bg-blue-100 text-blue-700' : 'text-slate-400 hover:bg-slate-100'}`}
+              >
+                <Filter size={12} /> Filtros
+              </button>
+            </div>
           </div>
 
           {showFilters && (
@@ -2265,6 +2326,69 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                   className="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-md"
                 >
                   Confirmar e Usar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Adicionar Contato Rápido */}
+      {showAddContactModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[90] p-4 animate-fade-in">
+          <div className="bg-white rounded-[2rem] max-w-sm w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+            <div className="bg-gradient-to-r from-blue-500 to-cyan-500 p-5">
+              <div className="flex items-center gap-3">
+                <User className="text-white" size={20} />
+                <div>
+                  <h2 className="text-lg font-bold text-white">Novo Contato</h2>
+                  <p className="text-[10px] text-white/80 font-medium">Adicionar para iniciar conversa</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nome</label>
+                <input
+                  type="text"
+                  value={newContactName}
+                  onChange={(e) => setNewContactName(e.target.value)}
+                  placeholder="Nome do contato..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Telefone (Whatsapp)</label>
+                <input
+                  type="tel"
+                  value={newContactPhone}
+                  onChange={(e) => setNewContactPhone(e.target.value)}
+                  placeholder="55999999999"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+                <p className="text-[10px] text-slate-400 px-1">Digite apenas números (com DDD).</p>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  onClick={() => setShowAddContactModal(false)}
+                  className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleQuickAddContact}
+                  disabled={isAddingContact || !newContactName || !newContactPhone}
+                  className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isAddingContact ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    <>
+                      <Check size={16} /> Salvar
+                    </>
+                  )}
                 </button>
               </div>
             </div>
