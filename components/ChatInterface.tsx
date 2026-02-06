@@ -150,6 +150,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [dealToDelete, setDealToDelete] = useState<string | null>(null);
   const [flashingContacts, setFlashingContacts] = useState<Set<string>>(new Set());
+  const [isPipelineDropdownOpen, setIsPipelineDropdownOpen] = useState(false);
+  const [isLoadingDropdown, setIsLoadingDropdown] = useState(false);
+  const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(null);
+
+
+
 
   // Channels and Filtering
   const [channels, setChannels] = useState<any[]>([]);
@@ -950,10 +956,242 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                     )}
                     <span className="hidden md:inline text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Lead</span>
                     <TagBadge tags={activeContact.tags} maxVisible={3} size="sm" />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Usa o contato ativo para abrir o gerenciador
+                        setContactDetails(activeContact as any);
+                        setShowTagManagerModal(true);
+                      }}
+                      className="ml-1 p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-500 transition-colors"
+                      title="Gerenciar Tags"
+                    >
+                      <Plus size={14} strokeWidth={3} />
+                    </button>
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-1 md:gap-3 text-slate-400">
+                <button
+                  onClick={async () => {
+                    const token = localStorage.getItem('token');
+                    try {
+                      // Fetch rápido para pegar deals atuais e decidir qual modal abrir
+                      const res = await fetch(`/api/chat/${activeContact.id}/details`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                      });
+                      const data = await res.json();
+                      setContactDetails(data);
+
+                      await fetchPipelinesData();
+
+                      if (data.deals && data.deals.length > 0) {
+                        // Tem deal! Vamos mover o primeiro
+                        const deal = data.deals[0];
+                        setSelectedDeal(deal);
+                        setSelectedPipeline(deal.pipeline_id);
+                        setSelectedStage(deal.stage_id);
+                        setShowMoveDealModal(true);
+                      } else {
+                        // Não tem deal, criar novo
+                        setShowPipelineModal(true);
+                      }
+                    } catch (e) {
+                      console.error('Erro ao abrir funil:', e);
+                      setContactDetails(activeContact as any);
+                      setShowPipelineModal(true);
+                    }
+                  }}
+                  className="hidden"
+                >
+                  <Layers size={14} />
+                  Funil
+                </button>
+
+                <div className="relative mr-2">
+                  <button
+                    onClick={() => {
+                      if (isPipelineDropdownOpen) {
+                        setIsPipelineDropdownOpen(false);
+                        return;
+                      }
+
+                      setIsPipelineDropdownOpen(true);
+                      setIsLoadingDropdown(true);
+
+                      const token = localStorage.getItem('token');
+                      (async () => {
+                        try {
+                          await fetchPipelinesData();
+                          const res = await fetch(`/api/chat/contacts/${activeContact.id}`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                          });
+                          if (!res.ok) throw new Error('Falha ao buscar detalhes');
+                          const data = await res.json();
+                          setContactDetails(data);
+                        } catch (e) {
+                          console.error(e);
+                        } finally {
+                          setIsLoadingDropdown(false);
+                        }
+                      })();
+                    }}
+                    className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${isPipelineDropdownOpen ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 border-blue-100 hover:border-blue-200'}`}
+                  >
+                    <Layers size={14} />
+                    Funil
+                    <ChevronDown size={12} className={`ml-1 transition-transform ${isPipelineDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Dropdown de Funil Rápido */}
+                  {isPipelineDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsPipelineDropdownOpen(false)}></div>
+                      <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-xl shadow-2xl border border-slate-100 p-2 z-50 animate-fade-in-up origin-top-right">
+                        {isLoadingDropdown ? (
+                          <div className="p-8 flex flex-col items-center justify-center gap-2 text-slate-400">
+                            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Carregando...</span>
+                          </div>
+                        ) : contactDetails?.deals && contactDetails.deals.length > 0 ? (
+                          <div className="flex flex-col h-full overflow-y-auto max-h-[400px]">
+                            {/* Lista de Deals Existentes */}
+                            {contactDetails.deals.map((deal: any, index: number) => {
+                              const currentPipeline = pipelines.find(p => p.id === deal.pipeline_id);
+                              return (
+                                <div key={deal.id} className={`mb-3 pb-3 ${index < contactDetails.deals.length - 1 ? 'border-b border-slate-100' : ''}`}>
+                                  <div className="px-3 py-2 border-b border-slate-50 mb-2 bg-slate-50/50 rounded-t-lg">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Negócio #{index + 1}</p>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <p className="text-xs font-extrabold text-slate-800 truncate" title={deal.pipeline_name}>{deal.pipeline_name}</p>
+                                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                        {Number(deal.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase px-3 mb-1.5 tracking-wider">Mover para etapa:</p>
+                                  <div className="space-y-1 max-h-40 overflow-y-auto px-1 scrollbar-hide">
+                                    {currentPipeline?.stages.map((stage: any) => {
+                                      const isCurrent = stage.id === deal.stage_id;
+                                      return (
+                                        <button
+                                          key={stage.id}
+                                          onClick={async () => {
+                                            const token = localStorage.getItem('token');
+                                            try {
+                                              await fetch(`/api/crm/deals/${deal.id}`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                                body: JSON.stringify({ stage_id: stage.id, pipeline_id: deal.pipeline_id })
+                                              });
+                                              setNotification({ type: 'success', message: `Movido para ${stage.name}!` });
+                                              setIsPipelineDropdownOpen(false);
+                                              setTimeout(() => setNotification(null), 3000);
+                                              // Refresh
+                                              setContactDetails(null);
+                                            } catch (e) {
+                                              console.error(e);
+                                            }
+                                          }}
+                                          className={`w-full text-left p-2.5 rounded-lg text-xs font-semibold flex items-center gap-3 transition-all ${isCurrent ? 'bg-blue-50/80 text-blue-700 ring-1 ring-blue-200' : 'text-slate-600 hover:bg-slate-50'}`}
+                                        >
+                                          <div className={`w-2.5 h-2.5 rounded-full shrink-0 shadow-sm ${isCurrent ? 'animate-pulse' : ''}`} style={{ backgroundColor: stage.color }}></div>
+                                          <span className="truncate flex-1">{stage.name}</span>
+                                          {isCurrent && <CheckCircle2 size={14} className="text-blue-600 shrink-0" />}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )
+                            })}
+
+                            <div className="border-t border-slate-50 mt-2 pt-2 pb-1 px-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setContactDetails({ ...contactDetails, deals: [] }); }}
+                                className="w-full text-left p-2 rounded-lg text-xs font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50 flex items-center justify-center gap-2 transition-colors"
+                              >
+                                <Plus size={12} />
+                                Novo Negócio / Outro Funil
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="px-3 py-2 border-b border-slate-50 mb-2">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Novo Negócio</p>
+                              <p className="text-xs text-slate-500">Selecione um funil para iniciar</p>
+                            </div>
+                            <div className="space-y-1 px-1">
+                              {pipelines.map(p => (
+                                <div key={p.id} className="border border-slate-100 rounded-lg overflow-hidden mb-1">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedPipelineId(expandedPipelineId === p.id ? null : p.id);
+                                    }}
+                                    className={`w-full text-left p-3 text-xs font-bold flex items-center gap-3 transition-colors ${expandedPipelineId === p.id ? 'bg-slate-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50 hover:text-blue-600'}`}
+                                  >
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${expandedPipelineId === p.id ? 'bg-blue-100 text-blue-600' : 'bg-green-50 text-green-600 group-hover:bg-blue-50 group-hover:text-blue-600'}`}>
+                                      <Layers size={16} />
+                                    </div>
+                                    <div className="flex flex-col flex-1">
+                                      <span className="truncate">{p.name}</span>
+                                      <span className="text-[10px] font-normal text-slate-400">{p.stages.length} etapas</span>
+                                    </div>
+                                    <ChevronDown size={12} className={`ml-auto text-slate-300 transition-transform ${expandedPipelineId === p.id ? 'rotate-180' : '-rotate-90'}`} />
+                                  </button>
+
+                                  {expandedPipelineId === p.id && (
+                                    <div className="bg-slate-50/50 p-1 space-y-0.5 border-t border-slate-100">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase px-2 py-1">Selecione etapa inicial:</p>
+                                      {p.stages.map((stage: any) => (
+                                        <button
+                                          key={stage.id}
+                                          onClick={async () => {
+                                            const token = localStorage.getItem('token');
+                                            try {
+                                              await fetch('/api/crm/deals', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                                body: JSON.stringify({
+                                                  contact_id: activeContact.id,
+                                                  name: activeContact.name,
+                                                  phone: activeContact.phone,
+                                                  pipeline_id: p.id,
+                                                  stage_id: stage.id,
+                                                  value: 0
+                                                })
+                                              });
+                                              setNotification({ type: 'success', message: 'Negócio criado!' });
+                                              setIsPipelineDropdownOpen(false);
+                                              setTimeout(() => setNotification(null), 3000);
+                                              setContactDetails(null);
+                                            } catch (e) {
+                                              console.error(e);
+                                            }
+                                          }}
+                                          className="w-full text-left p-2 rounded flex items-center gap-2 hover:bg-white hover:shadow-sm transition-all group"
+                                        >
+                                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }}></div>
+                                          <span className="text-xs text-slate-600 group-hover:text-blue-700">{stage.name}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
                 <button className="p-2.5 hover:bg-slate-100/80 hover:text-blue-600 rounded-xl transition-all hidden md:block"><Search size={20} /></button>
                 <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block"></div>
                 <button className="p-2.5 hover:bg-slate-100/80 hover:text-blue-600 rounded-xl transition-all"><MoreVertical size={20} /></button>

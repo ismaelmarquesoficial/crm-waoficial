@@ -211,40 +211,51 @@ router.post('/pipelines/:id/stages', verifyToken, async (req, res) => {
 
 // Criar Novo Deal (Manual)
 router.post('/deals', verifyToken, async (req, res) => {
-    const { name, phone, value, pipeline_id, stage_id } = req.body;
+    const { name, phone, value, pipeline_id, stage_id, contact_id, title } = req.body;
     const tenantId = req.tenantId || (req.user && req.user.tenantId);
 
-    if (!name || !phone || !pipeline_id || !stage_id) {
-        return res.status(400).json({ error: 'Dados incompletos (nome, telefone, pipeline, etapa são obrigatórios).' });
+    if (!pipeline_id || !stage_id) {
+        return res.status(400).json({ error: 'Pipeline e etapa são obrigatórios.' });
+    }
+
+    // Se não tiver contact_id, exige name e phone
+    if (!contact_id && (!name || !phone)) {
+        return res.status(400).json({ error: 'Dados incompletos (nome, telefone são obrigatórios se não houver contact_id).' });
     }
 
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
 
-        // 1. Verificar se contato já existe (pelo telefone)
-        let contactId;
-        const contactCheck = await client.query(
-            'SELECT id FROM contacts WHERE phone = $1 AND tenant_id = $2',
-            [phone, tenantId]
-        );
+        let finalContactId = contact_id;
 
-        if (contactCheck.rows.length > 0) {
-            contactId = contactCheck.rows[0].id;
-        } else {
-            // Criar contato
-            const newContact = await client.query(
-                'INSERT INTO contacts (tenant_id, name, phone) VALUES ($1, $2, $3) RETURNING id',
-                [tenantId, name, phone]
+        if (!finalContactId) {
+            // 1. Verificar se contato já existe (pelo telefone)
+            const contactCheck = await client.query(
+                'SELECT id FROM contacts WHERE phone = $1 AND tenant_id = $2',
+                [phone, tenantId]
             );
-            contactId = newContact.rows[0].id;
+
+            if (contactCheck.rows.length > 0) {
+                finalContactId = contactCheck.rows[0].id;
+            } else {
+                // Criar contato
+                const newContact = await client.query(
+                    'INSERT INTO contacts (tenant_id, name, phone) VALUES ($1, $2, $3) RETURNING id',
+                    [tenantId, name, phone]
+                );
+                finalContactId = newContact.rows[0].id;
+            }
         }
 
         // 2. Criar Deal
+        // Usa title do body, ou name, ou default
+        const dealTitle = title || name || 'Novo Negócio';
+
         const deal = await client.query(
             `INSERT INTO deals (tenant_id, contact_id, pipeline_id, stage_id, title, value, status, created_at, updated_at) 
              VALUES ($1, $2, $3, $4, $5, $6, 'open', NOW(), NOW()) RETURNING *`,
-            [tenantId, contactId, pipeline_id, stage_id, name, value || 0]
+            [tenantId, finalContactId, pipeline_id, stage_id, dealTitle, value || 0]
         );
 
         // 3. (Opcional) Poderia criar task de follow-up etc.
@@ -254,9 +265,9 @@ router.post('/deals', verifyToken, async (req, res) => {
         // Retornar objeto combinado (deal + contact info para o frontend)
         const responseData = {
             ...deal.rows[0],
-            contact_id: contactId,
-            name: name,
-            phone: phone,
+            contact_id: finalContactId,
+            name: name || null,
+            phone: phone || null,
             current_stage_id: stage_id
         };
 
