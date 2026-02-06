@@ -38,11 +38,14 @@ import {
   MessageSquare,
   Globe,
   LayoutTemplate,
-  Zap
+  Zap,
+  Upload,
+  List
 } from 'lucide-react';
 import TagBadge from './TagBadge';
 import TagManager from './TagManager';
 import { Contact, Message, MessageType } from '../types';
+import InteractiveMessageModal from './InteractiveMessageModal';
 
 // Inject custom animations
 const style = document.createElement('style');
@@ -201,6 +204,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [quickReplySearch, setQuickReplySearch] = useState('');
   const [selectedQuickReplyIndex, setSelectedQuickReplyIndex] = useState(0);
+
+  // Media Modal State
+  const [showMediaModal, setShowMediaModal] = useState(false);
+  const [mediaType, setMediaType] = useState<'image' | 'video' | 'audio' | 'document' | 'sticker'>('image');
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaCaption, setMediaCaption] = useState('');
+  const [mediaFilename, setMediaFilename] = useState('');
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+
+  // Interactive Modal State
+  const [showInteractiveModal, setShowInteractiveModal] = useState(false);
 
   useEffect(() => {
     // Fetch Company Variables on Mount
@@ -623,6 +637,93 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       fetchMessages(activeContactId);
       fetchChats();
     } catch (err) { console.error(err); }
+  };
+
+  const handleSendMedia = async () => {
+    if ((!mediaUrl.trim() && !mediaFile) || !activeContactId) return;
+
+    const token = localStorage.getItem('token');
+    try {
+      if (mediaFile) {
+        // Send File (Multipart)
+        const formData = new FormData();
+        formData.append('file', mediaFile);
+        formData.append('type', mediaType);
+        if (mediaCaption) formData.append('caption', mediaCaption);
+        if (mediaFilename && mediaType === 'document') formData.append('filename', mediaFilename);
+        if (currentChatChannel) formData.append('channelId', currentChatChannel);
+
+        await fetch(`http://localhost:3001/api/chat/${activeContactId}/send-media`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }, // Content-Type handled automatically
+          body: formData
+        });
+
+      } else {
+        // Send URL (JSON)
+        const payload: any = {
+          type: mediaType,
+          link: mediaUrl,
+          content: mediaUrl, // Fallback
+          channelId: currentChatChannel
+        };
+
+        if (mediaCaption) payload.caption = mediaCaption;
+        if (mediaFilename && mediaType === 'document') payload.filename = mediaFilename;
+
+        await fetch(`http://localhost:3001/api/chat/${activeContactId}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      // Clear modal
+      setShowMediaModal(false);
+      setMediaUrl('');
+      setMediaCaption('');
+      setMediaFilename('');
+      setMediaType('image');
+      setMediaFile(null);
+
+      fetchMessages(activeContactId);
+      fetchChats();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSendInteractive = async (interactiveData: any) => {
+    if (!activeContactId) return;
+    const token = localStorage.getItem('token');
+
+    try {
+      const res = await fetch(`http://localhost:3001/api/chat/${activeContactId}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          ...interactiveData,
+          channelId: currentChatChannel
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Erro ao enviar mensagem');
+      }
+
+      // Refresh
+      fetchMessages(activeContactId);
+      fetchChats();
+
+      // Return true to indicate success
+      return true;
+
+    } catch (err: any) {
+      console.error("Erro ao enviar mensagem interativa:", err);
+      alert(`Falha ao enviar: ${err.message}`);
+      return false;
+    }
   };
 
   const handleDeleteConversation = async () => {
@@ -1768,13 +1869,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
               )}
 
               <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex items-end p-1.5 md:p-2 transition-shadow hover:shadow-2xl">
-                <button className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Paperclip size={20} /></button>
+                <button
+                  onClick={() => setShowMediaModal(true)}
+                  className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                >
+                  <Paperclip size={20} />
+                </button>
                 <button
                   onClick={() => setShowTemplateModal(true)}
                   title="Usar Modelo"
                   className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden md:block"
                 >
                   <LayoutTemplate size={20} />
+                </button>
+                <button
+                  onClick={() => setShowInteractiveModal(true)}
+                  title="Mensagem Interativa (Botões/Lista)"
+                  className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden md:block"
+                >
+                  <List size={20} />
                 </button>
                 <button
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
@@ -1863,8 +1976,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                             }}
                             onMouseEnter={() => setSelectedQuickReplyIndex(index)}
                             className={`w-full text-left p-3 rounded-xl transition-colors group border ${index === selectedQuickReplyIndex
-                                ? 'bg-amber-50 border-amber-200'
-                                : 'border-transparent hover:bg-amber-50 hover:border-amber-200'
+                              ? 'bg-amber-50 border-amber-200'
+                              : 'border-transparent hover:bg-amber-50 hover:border-amber-200'
                               }`}
                           >
                             <div className="flex items-center gap-2 mb-1">
@@ -2793,7 +2906,185 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
         </div>
       )}
 
-    </div>
+      {/* Media Modal */}
+      {showMediaModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fade-in-up border border-slate-100">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Paperclip size={20} className="text-blue-500" />
+                Enviar Mídia
+              </h3>
+              <button
+                onClick={() => {
+                  setShowMediaModal(false);
+                  setMediaUrl('');
+                  setMediaCaption('');
+                  setMediaFilename('');
+                }}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Media Type Selector */}
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Tipo de Mídia</label>
+              <div className="grid grid-cols-5 gap-2">
+                {(['image', 'video', 'audio', 'document', 'sticker'] as const).map(type => (
+                  <button
+                    key={type}
+                    onClick={() => setMediaType(type)}
+                    className={`p-3 rounded-xl border-2 transition-all ${mediaType === type
+                      ? 'border-blue-500 bg-blue-50 text-blue-600'
+                      : 'border-slate-200 hover:border-blue-300 text-slate-600'
+                      }`}
+                  >
+                    <div className="flex flex-col items-center gap-1">
+                      {type === 'image' && <ImageIcon size={20} />}
+                      {type === 'video' && <VideoIcon size={20} />}
+                      {type === 'audio' && <Mic size={20} />}
+                      {type === 'document' && <FileText size={20} />}
+                      {type === 'sticker' && <Smile size={20} />}
+                      <span className="text-[9px] font-bold uppercase">{type}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* URL Input */}
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Arquivo ou URL</label>
+
+              {/* File Drop Area */}
+              <div
+                className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer mb-2 flex flex-col items-center justify-center ${mediaFile ? 'border-green-500 bg-green-50' : 'border-slate-300 hover:border-blue-500 hover:bg-blue-50'
+                  }`}
+                onClick={() => document.getElementById('media-file-input')?.click()}
+              >
+                <input
+                  id="media-file-input"
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setMediaFile(file);
+                      setMediaUrl(URL.createObjectURL(file));
+                      if (file.name) setMediaFilename(file.name);
+                    }
+                  }}
+                />
+                {mediaFile ? (
+                  <>
+                    <CheckCircle2 size={32} className="text-green-500 mb-2" />
+                    <span className="text-sm font-bold text-slate-700">{mediaFile.name}</span>
+                    <span className="text-xs text-slate-500">{(mediaFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMediaFile(null);
+                        setMediaUrl('');
+                      }}
+                      className="mt-2 text-xs text-red-500 hover:underline"
+                    >
+                      Remover
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-12 h-12 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-2">
+                      <Upload size={24} />
+                    </div>
+                    <span className="text-sm font-bold text-slate-600">Clique para selecionar um arquivo</span>
+                    <span className="text-xs text-slate-400">ou arraste e solte aqui</span>
+                  </>
+                )}
+              </div>
+
+              <div className="text-center text-xs text-slate-400 mb-2 font-bold">- OU -</div>
+
+              <input
+                type="url"
+                value={!mediaFile ? mediaUrl : ''}
+                readOnly={!!mediaFile}
+                onChange={(e) => setMediaUrl(e.target.value)}
+                placeholder="https://exemplo.com/arquivo.jpg"
+                className={`w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm ${mediaFile ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
+              />
+            </div>
+
+            {/* Caption (for image, video, document) */}
+            {['image', 'video', 'document'].includes(mediaType) && (
+              <div className="mb-4">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Legenda (Opcional)</label>
+                <textarea
+                  value={mediaCaption}
+                  onChange={(e) => setMediaCaption(e.target.value)}
+                  placeholder="Adicione uma descrição..."
+                  rows={2}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm resize-none"
+                />
+              </div>
+            )}
+
+            {/* Filename (for document) */}
+            {mediaType === 'document' && (
+              <div className="mb-4">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Nome do Arquivo (Opcional)</label>
+                <input
+                  type="text"
+                  value={mediaFilename}
+                  onChange={(e) => setMediaFilename(e.target.value)}
+                  placeholder="documento.pdf"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm"
+                />
+              </div>
+            )}
+
+            {/* Preview */}
+            {mediaUrl && mediaType === 'image' && (
+              <div className="mb-4">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Preview</label>
+                <img src={mediaUrl} alt="Preview" className="w-full h-48 object-cover rounded-xl border border-slate-200" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowMediaModal(false);
+                  setMediaUrl('');
+                  setMediaCaption('');
+                  setMediaFilename('');
+                }}
+                className="flex-1 py-2.5 text-slate-600 font-bold text-sm bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSendMedia}
+                disabled={!mediaUrl.trim()}
+                className="flex-1 py-2.5 text-white font-bold text-sm bg-blue-500 hover:bg-blue-600 rounded-xl transition-colors shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Modal */}
+      <InteractiveMessageModal
+        isOpen={showInteractiveModal}
+        onClose={() => setShowInteractiveModal(false)}
+        onSend={handleSendInteractive}
+      />
+
+    </div >
   );
 };
 

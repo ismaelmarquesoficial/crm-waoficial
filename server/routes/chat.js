@@ -1,6 +1,39 @@
 const express = require('express');
 const axios = require('axios');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
+const FormData = require('form-data');
 const router = express.Router();
+
+// Multer Configuration
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const tenantId = req.tenantId || (req.user && req.user.tenantId);
+        // We need channelId to organize folders. If not in body (multipart), we might need to parse it or use default.
+        // Since multer runs before body parsing for non-file fields might be tricky,
+        // we'll use a temp folder first or rely on req.body if available (multer processes fields in order).
+        // Let's use a meaningful default and move it later or just structure by tenant for now.
+        // User requested: public/tenant/whatsapp_account.
+        // We will try to get accountId from req.body or use 'default'.
+        // NOTE: In multipart/form-data, text fields MUST come before file fields for req.body to be populated in destination.
+
+        const accountId = req.body.channelId || 'general';
+        const dir = path.join(__dirname, '..', 'public', 'uploads', String(tenantId), String(accountId));
+
+        fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        // Keep original extension
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+    }
+});
+
+const upload = multer({ storage: storage });
+
 const db = require('../db');
 const verifyToken = require('../middleware/authMiddleware');
 
@@ -221,7 +254,7 @@ router.post('/:contactId/send', async (req, res) => {
     const { contactId } = req.params;
     const { type, content, channelId, template } = req.body;
 
-    if (!content && type !== 'template') return res.status(400).json({ error: 'Conteúdo vazio.' });
+    if (!content && type !== 'template' && type !== 'interactive') return res.status(400).json({ error: 'Conteúdo vazio.' });
 
     try {
         const tenantId = req.tenantId || (req.user && req.user.tenantId);
@@ -303,17 +336,69 @@ router.post('/:contactId/send', async (req, res) => {
 
             case 'image':
                 payload.type = "image";
-                payload.image = { link: content }; // content assume URL
+                payload.image = { link: req.body.link || content };
+                if (req.body.caption) payload.image.caption = req.body.caption;
+                break;
+
+            case 'video':
+                payload.type = "video";
+                payload.video = { link: req.body.link || content };
+                if (req.body.caption) payload.video.caption = req.body.caption;
                 break;
 
             case 'document':
                 payload.type = "document";
-                payload.document = { link: content };
+                payload.document = { link: req.body.link || content };
+                if (req.body.caption) payload.document.caption = req.body.caption;
+                if (req.body.filename) payload.document.filename = req.body.filename;
                 break;
 
             case 'audio':
                 payload.type = "audio";
-                payload.audio = { link: content };
+                payload.audio = { link: req.body.link || content };
+                break;
+
+            case 'sticker':
+                payload.type = "sticker";
+                payload.sticker = { link: req.body.link || content };
+                break;
+
+            case 'interactive':
+                const interactiveData = req.body.interactive;
+                if (!interactiveData) return res.status(400).json({ error: 'Dados interativos ausentes.' });
+
+                payload.type = "interactive";
+                payload.interactive = {};
+
+                if (interactiveData.type === 'button') {
+                    payload.interactive.type = "button";
+                    payload.interactive.body = { text: interactiveData.body.text };
+                    if (interactiveData.header) {
+                        payload.interactive.header = { type: 'text', text: interactiveData.header.text };
+                    }
+                    if (interactiveData.footer) {
+                        payload.interactive.footer = { text: interactiveData.footer.text };
+                    }
+                    payload.interactive.action = {
+                        buttons: interactiveData.action.buttons.map(btn => ({
+                            type: 'reply',
+                            reply: { id: btn.reply.id, title: btn.reply.title }
+                        }))
+                    };
+                } else if (interactiveData.type === 'list') {
+                    payload.interactive.type = "list";
+                    payload.interactive.body = { text: interactiveData.body.text };
+                    if (interactiveData.header) {
+                        payload.interactive.header = { type: 'text', text: interactiveData.header.text };
+                    }
+                    if (interactiveData.footer) {
+                        payload.interactive.footer = { text: interactiveData.footer.text };
+                    }
+                    payload.interactive.action = {
+                        button: interactiveData.action.button,
+                        sections: interactiveData.action.sections
+                    };
+                }
                 break;
 
             case 'text':
@@ -344,7 +429,16 @@ router.post('/:contactId/send', async (req, res) => {
             // Se veio conteúdo visual do frontend (preview preenchido), usa ele. Senão, usa o nome.
             messageLogContent = content && content.trim() !== '' ? content : `Template: ${template.name}`;
         }
-        else if (['image', 'document', 'audio'].includes(msgType)) messageLogContent = `[Mídia: ${msgType}] ${content}`;
+        else if (['image', 'video', 'document', 'audio', 'sticker'].includes(msgType)) {
+            const caption = req.body.caption ? ` - ${req.body.caption}` : '';
+            const filename = req.body.filename ? ` (${req.body.filename})` : '';
+            messageLogContent = `[${msgType.toUpperCase()}]${filename}${caption}`;
+        }
+        else if (msgType === 'interactive') {
+            const interactiveBody = req.body.interactive?.body?.text || '';
+            const interactiveType = req.body.interactive?.type === 'list' ? 'MENU' : 'BOTÕES';
+            messageLogContent = `[${interactiveType}] ${interactiveBody}`;
+        }
 
         const insert = await db.query(
             `INSERT INTO chat_logs 
@@ -693,6 +787,123 @@ router.post('/import', async (req, res) => {
         res.status(500).json({ error: 'Erro ao importar contatos' });
     } finally {
         client.release();
+    }
+});
+
+// 4. Enviar Mídia (Upload Local -> Meta -> Send)
+router.post('/:contactId/send-media', upload.single('file'), async (req, res) => {
+    const { contactId } = req.params;
+    const { type, caption, channelId } = req.body;
+    const file = req.file;
+
+    if (!file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+
+    try {
+        const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+        // --- STICKY CHANNEL LOGIC (Simplified for Media) ---
+        let channelIdToUse = channelId || null;
+        if (!channelIdToUse) {
+            const lastMsg = await db.query("SELECT whatsapp_account_id FROM chat_logs WHERE contact_id = $1 ORDER BY timestamp DESC LIMIT 1", [contactId]);
+            if (lastMsg.rows.length > 0) channelIdToUse = lastMsg.rows[0].whatsapp_account_id;
+        }
+
+        let channelQuery = "SELECT id, phone_number_id, permanent_token FROM whatsapp_accounts WHERE tenant_id = $1 AND status = 'CONNECTED'";
+        let channelParams = [tenantId];
+        if (channelIdToUse) {
+            channelQuery += " AND id = $2";
+            channelParams.push(channelIdToUse);
+        } else {
+            channelQuery += " LIMIT 1";
+        }
+
+        const channelRes = await db.query(channelQuery, channelParams);
+        if (channelRes.rows.length === 0) return res.status(400).json({ error: 'Nenhum canal conectado.' });
+        const channel = channelRes.rows[0];
+
+        // 1. Upload para Meta Graph API
+        const metaUploadUrl = `https://graph.facebook.com/v19.0/${channel.phone_number_id}/media`;
+
+        const formData = new FormData();
+        formData.append('file', fs.createReadStream(file.path));
+        formData.append('type', file.mimetype); // important for Meta
+        formData.append('messaging_product', 'whatsapp');
+
+        console.log(`📤 Uploading media to Meta: ${file.originalname} (${file.mimetype})`);
+
+        const uploadRes = await axios.post(metaUploadUrl, formData, {
+            headers: {
+                Authorization: `Bearer ${channel.permanent_token}`,
+                ...formData.getHeaders()
+            }
+        });
+
+        const mediaId = uploadRes.data.id;
+        console.log(`✅ Media Uploaded! ID: ${mediaId}`);
+
+        // 2. Enviar Mensagem usando ID
+        const contactRes = await db.query("SELECT phone FROM contacts WHERE id = $1", [contactId]);
+        const contactPhone = contactRes.rows[0].phone;
+        const sendUrl = `https://graph.facebook.com/v19.0/${channel.phone_number_id}/messages`;
+
+        let payload = {
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to: contactPhone,
+            type: type
+        };
+
+        // Construct payload based on type with ID
+        if (['image', 'video', 'audio', 'document', 'sticker'].includes(type)) {
+            payload[type] = { id: mediaId };
+            if (caption) payload[type].caption = caption;
+            if (type === 'document' && req.body.filename) payload[type].filename = req.body.filename;
+        } else {
+            // Fallback usually shouldn't happen here
+            return res.status(400).json({ error: 'Invalid media type for upload flow' });
+        }
+
+        const sendRes = await axios.post(sendUrl, payload, {
+            headers: {
+                Authorization: `Bearer ${channel.permanent_token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const wamid = sendRes.data.messages[0].id;
+
+        // 3. Salvar no Banco (Mantendo link local para histórico)
+        // file.path is absolute, let's make it relative to public for serving if needed
+        const relativePath = path.relative(path.join(__dirname, '..', 'public'), file.path).replace(/\\/g, '/');
+        const publicUrl = `/uploads/${relativePath}`; // Adjust based on how you serve static files
+
+        const timestamp = new Date();
+        const messageLogContent = `[${type.toUpperCase()}] (Local: ${file.originalname})${caption ? ' - ' + caption : ''}`;
+
+        // Insert using the same schema as nearby code
+        const insert = await db.query(
+            `INSERT INTO chat_logs 
+            (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, direction, status, channel, timestamp, created_at, media_url) 
+            VALUES ($1, $2, $3, $4, $5, $7, 'OUTBOUND', 'sent', 'WhatsApp Business', $6::timestamptz, $6::timestamptz, $8)
+            RETURNING *`,
+            [tenantId, contactId, channel.id, wamid, messageLogContent, timestamp.toISOString(), type, publicUrl]
+        );
+
+        // Emitir Socket
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`tenant_${tenantId}`).emit('new_message', insert.rows[0]);
+        }
+
+        res.json(insert.rows[0]);
+
+    } catch (err) {
+        console.error('Erro ao enviar mídia:', err);
+        // Clean up file on error?
+        if (file && fs.existsSync(file.path)) {
+            // fs.unlinkSync(file.path); // Uncomment to delete on error
+        }
+        res.status(500).json({ error: 'Erro ao enviar mídia' });
     }
 });
 
