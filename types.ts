@@ -31,6 +31,7 @@ export interface Message {
   fileName?: string; // For documents
   timestamp: string;
   status: 'sent' | 'delivered' | 'read';
+  channelId?: string;
 }
 
 export interface PipelineStage {

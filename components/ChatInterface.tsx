@@ -188,6 +188,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [isAddingContact, setIsAddingContact] = useState(false);
   const [currentChatChannel, setCurrentChatChannel] = useState<string | null>(null);
 
+  // Delete Conversation State
+  const [showDeleteConvConfirm, setShowDeleteConvConfirm] = useState(false);
+  const [convToDelete, setConvToDelete] = useState<string | null>(null);
+  const [isDeletingConv, setIsDeletingConv] = useState(false);
+
   useEffect(() => {
     // Fetch Company Variables on Mount
     const token = localStorage.getItem('token');
@@ -510,6 +515,39 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       fetchChats();
     } catch (err) { console.error(err); }
   };
+
+  const handleDeleteConversation = async () => {
+    if (!convToDelete) return;
+
+    setIsDeletingConv(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/chat/contacts/${convToDelete}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        setContacts(prev => prev.filter(c => c.id !== convToDelete));
+        if (activeContactId === convToDelete) {
+          setActiveContactId(null);
+          // setActiveContact(null); // activeContact is derived, so just ID is enough
+        }
+        setNotification({ type: 'success', message: 'Conversa excluída.' });
+      } else {
+        setNotification({ type: 'error', message: 'Erro ao excluir.' });
+      }
+    } catch (err) {
+      console.error(err);
+      setNotification({ type: 'error', message: 'Erro ao excluir.' });
+    } finally {
+      setIsDeletingConv(false);
+      setShowDeleteConvConfirm(false);
+      setConvToDelete(null);
+    }
+  };
+
+
 
   const onEmojiClick = (emojiData: EmojiClickData) => {
     setInputText((prev) => prev + emojiData.emoji);
@@ -1047,6 +1085,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       : 'bg-white hover:shadow-sm hover:border-blue-200'
                   }`}
               >
+                {/* Delete Button (Hover) */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConvToDelete(contact.id);
+                    setShowDeleteConvConfirm(true);
+                  }}
+                  className="absolute right-1 top-1 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all z-20"
+                  title="Excluir Conversa"
+                >
+                  <Trash2 size={14} />
+                </button>
+
                 {/* Active Indicator Vertical Bar */}
                 {isActive && <div className="absolute left-0 top-3 bottom-3 w-1 bg-gradient-to-b from-blue-500 to-teal-400 rounded-r-full"></div>}
 
@@ -2474,6 +2525,38 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
           </button>
         </div>
       )}
+      {/* Delete Conversation Confirmation Modal */}
+      {showDeleteConvConfirm && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-fade-in-up border border-slate-100">
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center text-red-500 mb-2">
+                <Trash2 size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">Excluir Conversa?</h3>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Tem certeza que deseja apagar esta conversa? Todo o histórico e dados do contato serão removidos permanentemente.
+              </p>
+              <div className="flex gap-3 w-full mt-2">
+                <button
+                  onClick={() => setShowDeleteConvConfirm(false)}
+                  className="flex-1 py-2.5 text-slate-600 font-bold text-sm bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteConversation}
+                  disabled={isDeletingConv}
+                  className="flex-1 py-2.5 text-white font-bold text-sm bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-lg shadow-red-500/30 flex justify-center items-center gap-2"
+                >
+                  {isDeletingConv ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Excluir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

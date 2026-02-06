@@ -1619,17 +1619,35 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Atribuir Tag (Opcional)</label>
-                                        <input
-                                            type="text"
-                                            value={importTag}
-                                            onChange={(e) => setImportTag(e.target.value)}
-                                            className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                                            placeholder="Ex: Lead_Maio"
-                                            list="import-tags-list"
-                                        />
+                                        <div className="relative">
+                                            <TagIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                            <input
+                                                type="text"
+                                                value={importTag}
+                                                onChange={(e) => setImportTag(e.target.value)}
+                                                className="w-full bg-slate-50 border-0 pl-10 pr-3 py-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                                                placeholder="Digite ou clique abaixo..."
+                                                list="import-tags-list"
+                                            />
+                                        </div>
                                         <datalist id="import-tags-list">
                                             {allTagsSystem.map(t => <option key={t} value={t} />)}
                                         </datalist>
+                                        {/* Chips de Tags Existentes */}
+                                        {allTagsSystem.length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5 pt-1">
+                                                {allTagsSystem.slice(0, 10).map(t => (
+                                                    <button
+                                                        key={t}
+                                                        type="button"
+                                                        onClick={() => setImportTag(t)}
+                                                        className="px-2 py-1 bg-slate-100 hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded-lg text-[10px] font-bold border border-slate-200 transition-all"
+                                                    >
+                                                        #{t}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Mover para Funil (Opcional)</label>
