@@ -36,7 +36,8 @@ import {
   MoveRight,
   Instagram,
   MessageSquare,
-  Globe
+  Globe,
+  LayoutTemplate
 } from 'lucide-react';
 import TagBadge from './TagBadge';
 import TagManager from './TagManager';
@@ -165,6 +166,103 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [channels, setChannels] = useState<any[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string>('all');
   const [isChannelDropdownOpen, setIsChannelDropdownOpen] = useState(false);
+
+  // Template System & Variables
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState('');
+
+  // Variable Filling System
+  const [companyVariables, setCompanyVariables] = useState<any[]>([]);
+  const [showVariableFillModal, setShowVariableFillModal] = useState(false);
+  const [pendingTemplateText, setPendingTemplateText] = useState('');
+  const [pendingVariables, setPendingVariables] = useState<string[]>([]);
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    // Fetch Company Variables on Mount
+    const token = localStorage.getItem('token');
+    fetch('/api/settings/company', { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        if (data.custom_variables) setCompanyVariables(data.custom_variables);
+      })
+      .catch(e => console.error('Error fetching defaults', e));
+  }, []);
+
+  const fetchTemplates = useCallback(async () => {
+    setIsLoadingTemplates(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/channels/templates/all', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates(data);
+      } else {
+        // Fallback Mock se falhar
+        setTemplates([
+          { id: 1, name: 'boas_vindas', components: [{ type: 'BODY', text: 'Olá {{1}}! Como posso ajudar você hoje?' }] },
+          { id: 2, name: 'ausencia', components: [{ type: 'BODY', text: 'No momento não estamos disponíveis. Retornaremos em breve.' }] }
+        ]);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar templates', error);
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showTemplateModal) {
+      fetchTemplates();
+    }
+  }, [showTemplateModal, fetchTemplates]);
+
+  const handleUseTemplate = (template: any) => {
+    // Extrair texto do BODY
+    const bodyComponent = template.components?.find((c: any) => c.type === 'BODY');
+    let text = bodyComponent?.text || '';
+
+    // Auto-preencher {{1}} com nome do contato
+    if (text && activeContactId) {
+      const activeContact = contacts.find(c => String(c.id) === String(activeContactId));
+      if (activeContact && activeContact.name) {
+        text = text.replace(/\{\{1\}\}/g, activeContact.name);
+      }
+    }
+
+    // Check remaining variables {{2}}, {{3}}...
+    const remainingVars = text.match(/\{\{\d+\}\}/g);
+    const uniqueVars = remainingVars ? Array.from(new Set(remainingVars)) : [];
+
+    if (uniqueVars.length > 0) {
+      // Open Variable Fill Modal
+      setPendingTemplateText(text);
+      setPendingVariables(uniqueVars);
+      setVariableValues({});
+      setShowVariableFillModal(true);
+    } else {
+      // No more vars, insert directly
+      if (text) setInputText(text);
+      else setInputText(`Template: ${template.name}`);
+    }
+
+    setShowTemplateModal(false);
+  };
+
+  const finalizeTemplate = () => {
+    let finalText = pendingTemplateText;
+    pendingVariables.forEach(v => {
+      const val = variableValues[v] || '';
+      // Replace ALL occurrences
+      finalText = finalText.split(v).join(val);
+    });
+    setInputText(finalText);
+    setShowVariableFillModal(false);
+  };
 
   // 2. Refs
   const activeContactIdRef = useRef(activeContactId);
@@ -1409,6 +1507,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
               <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex items-end p-1.5 md:p-2 transition-shadow hover:shadow-2xl">
                 <button className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"><Paperclip size={20} /></button>
                 <button
+                  onClick={() => setShowTemplateModal(true)}
+                  title="Usar Modelo"
+                  className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden md:block"
+                >
+                  <LayoutTemplate size={20} />
+                </button>
+                <button
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                   className={`hidden md:block p-3 rounded-full transition-colors ${showEmojiPicker ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}`}
                 >
@@ -2020,6 +2125,146 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       Criar Pipeline
                     </>
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal de Templates */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[90] p-4 animate-fade-in">
+          <div className="bg-white rounded-[2rem] max-w-2xl w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20 max-h-[80vh] flex flex-col">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <LayoutTemplate className="text-white" size={20} />
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Modelos de Mensagem</h2>
+                    <p className="text-[10px] text-white/80 font-medium">Selecione um template para usar</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowTemplateModal(false)}
+                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
+                >
+                  <X size={18} strokeWidth={2.5} />
+                </button>
+              </div>
+              <div className="mt-4 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60" size={16} />
+                <input
+                  type="text"
+                  placeholder="Buscar modelo..."
+                  value={templateSearch}
+                  onChange={(e) => setTemplateSearch(e.target.value)}
+                  className="w-full bg-white/10 border border-white/20 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 transition-all input-placeholder-white"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 space-y-3">
+              {isLoadingTemplates ? (
+                <div className="flex justify-center py-10">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : templates.filter(t => t.name.toLowerCase().includes(templateSearch.toLowerCase())).length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                  Nenhum modelo encontrado.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {templates.filter(t => t.name.toLowerCase().includes(templateSearch.toLowerCase())).map(template => (
+                    <button
+                      key={template.id}
+                      onClick={() => handleUseTemplate(template)}
+                      className="text-left group bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 rounded-xl p-4 transition-all hover:shadow-md"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-bold text-slate-700 text-sm group-hover:text-blue-700 truncate capitalize">
+                          {template.name.replace(/_/g, ' ')}
+                        </h3>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${template.status === 'APPROVED' ? 'bg-green-100 text-green-600' : 'bg-slate-200 text-slate-500'}`}>
+                          {template.status || 'Ativo'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed">
+                        {template.components?.find((c: any) => c.type === 'BODY')?.text || 'Sem conteúdo de texto visualizável.'}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 text-center">
+              <p className="text-[10px] text-slate-400">Templates são gerenciados no painel da Meta/WhatsApp.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* Modal de Preenchimento de Variáveis */}
+      {showVariableFillModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[95] p-4 animate-fade-in">
+          <div className="bg-white rounded-[2rem] max-w-lg w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-5">
+              <div className="flex items-center gap-3">
+                <Edit3 className="text-white" size={20} />
+                <div>
+                  <h2 className="text-lg font-bold text-white">Preencher Variáveis</h2>
+                  <p className="text-[10px] text-white/80 font-medium">Complete os campos faltantes do template</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {pendingVariables.map((v, idx) => (
+                <div key={v} className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                    Variável {v}
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder={`Valor para ${v}...`}
+                      value={variableValues[v] || ''}
+                      onChange={(e) => setVariableValues(prev => ({ ...prev, [v]: e.target.value }))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
+                      autoFocus={idx === 0}
+                    />
+                    {/* Sugestões Globais */}
+                    {companyVariables.length > 0 && (
+                      <div className="flex flex-wrap gap-2 px-1">
+                        {companyVariables.map(cv => (
+                          <button
+                            key={cv.key}
+                            onClick={() => setVariableValues(prev => ({ ...prev, [v]: cv.value }))}
+                            className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold hover:bg-indigo-100 transition-colors"
+                            title={cv.value}
+                          >
+                            {cv.key.replace(/_/g, ' ')}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  onClick={() => setShowVariableFillModal(false)}
+                  className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={finalizeTemplate}
+                  className="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-md"
+                >
+                  Confirmar e Usar
                 </button>
               </div>
             </div>
