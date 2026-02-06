@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, ShieldCheck, Link2, Users, Mail, Shield, Globe, Copy, Settings, LayoutDashboard, CheckCircle, AlertCircle, X, Smartphone, Wifi, Trash2, Check, RefreshCw } from 'lucide-react';
+import { MessageSquare, ShieldCheck, Link2, Users, Mail, Shield, Globe, Copy, Settings, LayoutDashboard, CheckCircle, AlertCircle, X, Smartphone, Wifi, Trash2, Check, RefreshCw, Plus, Database, Tag } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { User } from '../types';
 
@@ -192,7 +192,7 @@ const WhatsAppOfficialForm = ({ editId, onCancel, onSuccess }: { editId?: number
 
 
 const IntegrationScreen: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'integrations' | 'team' | 'company'>('integrations');
+  const [activeTab, setActiveTab] = useState<'integrations' | 'team' | 'company' | 'variables'>('integrations');
   const [channels, setChannels] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [companyData, setCompanyData] = useState<any>({});
@@ -311,7 +311,7 @@ const IntegrationScreen: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'integrations' && viewMode === 'list') fetchChannels();
     if (activeTab === 'team') fetchTeam();
-    if (activeTab === 'company') fetchCompany();
+    if (activeTab === 'company' || activeTab === 'variables') fetchCompany();
   }, [activeTab, viewMode]);
 
   const fetchChannels = async () => {
@@ -465,7 +465,7 @@ const IntegrationScreen: React.FC = () => {
         </div>
 
         <div className="flex gap-2 p-1.5 bg-white/50 backdrop-blur-sm rounded-xl border border-slate-200/60 inline-flex">
-          {['integrations', 'team', 'company'].map((tab) => (
+          {['integrations', 'team', 'company', 'variables'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -474,7 +474,7 @@ const IntegrationScreen: React.FC = () => {
                 : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
                 }`}
             >
-              {tab === 'integrations' ? 'Canais' : tab === 'team' ? 'Equipe' : 'Empresa'}
+              {tab === 'integrations' ? 'Canais' : tab === 'team' ? 'Equipe' : tab === 'company' ? 'Empresa' : 'Variáveis'}
             </button>
           ))}
         </div>
@@ -832,15 +832,19 @@ const IntegrationScreen: React.FC = () => {
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1">Email Financeiro</label>
                     <input disabled={!isEditingCompany} type="text" className={`w-full p-4 rounded-2xl transition-all duration-300 font-medium text-slate-700 ${isEditingCompany ? 'bg-white border-2 border-primary/20 focus:border-meta shadow-sm' : 'bg-slate-50 border-2 border-transparent text-slate-500 cursor-not-allowed'}`} value={companyData.contact_email || ''} onChange={e => setCompanyData({ ...companyData, contact_email: e.target.value })} placeholder="financeiro@empresa.com" />
                   </div>
-                  <div className="grid grid-cols-3 gap-6">
-                    <div className="col-span-1">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
                       <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1">Website</label>
                       <input disabled={!isEditingCompany} type="text" className={`w-full p-4 rounded-2xl transition-all duration-300 font-medium text-slate-700 ${isEditingCompany ? 'bg-white border-2 border-primary/20 focus:border-meta shadow-sm' : 'bg-slate-50 border-2 border-transparent text-slate-500 cursor-not-allowed'}`} value={companyData.website || ''} onChange={e => setCompanyData({ ...companyData, website: e.target.value })} placeholder="https://..." />
                     </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1">Endereço</label>
-                      <input disabled={!isEditingCompany} type="text" className={`w-full p-4 rounded-2xl transition-all duration-300 font-medium text-slate-700 ${isEditingCompany ? 'bg-white border-2 border-primary/20 focus:border-meta shadow-sm' : 'bg-slate-50 border-2 border-transparent text-slate-500 cursor-not-allowed'}`} value={companyData.address || ''} onChange={e => setCompanyData({ ...companyData, address: e.target.value })} placeholder="Rua..., Cidade - UF" />
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1">Chave PIX</label>
+                      <input disabled={!isEditingCompany} type="text" className={`w-full p-4 rounded-2xl transition-all duration-300 font-medium text-slate-700 ${isEditingCompany ? 'bg-white border-2 border-primary/20 focus:border-meta shadow-sm' : 'bg-slate-50 border-2 border-transparent text-slate-500 cursor-not-allowed'}`} value={companyData.pix_key || ''} onChange={e => setCompanyData({ ...companyData, pix_key: e.target.value })} placeholder="CPF/CNPJ/Email..." />
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1">Endereço</label>
+                    <input disabled={!isEditingCompany} type="text" className={`w-full p-4 rounded-2xl transition-all duration-300 font-medium text-slate-700 ${isEditingCompany ? 'bg-white border-2 border-primary/20 focus:border-meta shadow-sm' : 'bg-slate-50 border-2 border-transparent text-slate-500 cursor-not-allowed'}`} value={companyData.address || ''} onChange={e => setCompanyData({ ...companyData, address: e.target.value })} placeholder="Rua..., Cidade - UF" />
                   </div>
 
                   {isEditingCompany && (
@@ -855,6 +859,160 @@ const IntegrationScreen: React.FC = () => {
           </div>
         )
       }
+
+      {/* Notificação Toast */}
+      {activeTab === 'variables' && (
+        <div className="max-w-4xl animate-fade-in mx-auto pb-20">
+          <div className="flex justify-between items-start mb-10">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Variáveis</h2>
+              <p className="text-slate-500 mt-1">Gerencie variáveis para usar em respostas e campanhas.</p>
+            </div>
+          </div>
+
+          {/* Variáveis do Sistema */}
+          <div className="bg-white rounded-[2rem] p-8 shadow-soft border border-slate-100 mb-8">
+            <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center gap-2"><Database size={20} className="text-blue-500" /> Variáveis do Sistema</h3>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              {[
+                { k: '{{contact.name}}', d: 'Nome do Contato', v: 'Nome do cliente' },
+                { k: '{{contact.phone}}', d: 'Telefone', v: '5511999999999' },
+                { k: '{{contact.email}}', d: 'Email', v: 'email@cliente.com' },
+                { k: '{{company.name}}', d: 'Nome da Empresa', v: companyData.name },
+                { k: '{{company.company_name}}', d: 'Razão Social', v: companyData.company_name },
+                { k: '{{company.cnpj}}', d: 'CNPJ', v: companyData.cnpj },
+                { k: '{{company.contact_email}}', d: 'Email Empresa', v: companyData.contact_email },
+                { k: '{{company.contact_phone}}', d: 'Tel Empresa', v: companyData.contact_phone },
+                { k: '{{company.website}}', d: 'Site', v: companyData.website },
+                { k: '{{company.address}}', d: 'Endereço', v: companyData.address },
+                { k: '{{company.pix_key}}', d: 'Chave PIX', v: companyData.pix_key },
+              ].map(v => (
+                <div key={v.k} className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors group cursor-pointer" onClick={() => { navigator.clipboard.writeText(v.k); showNotification('Copiado!', 'success'); }}>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{v.d}</p>
+                  <div className="flex justify-between items-center mb-1">
+                    <code className="text-xs font-bold text-slate-700 font-mono bg-white px-2 py-1 rounded border border-slate-200">{v.k}</code>
+                    <Copy size={12} className="text-slate-300 group-hover:text-blue-500" />
+                  </div>
+                  <div className="text-[10px] text-slate-300 font-mono truncate pt-1 border-t border-slate-100/50 mt-1" title={v.v || ''}>
+                    {v.v ? v.v : <span className="opacity-50 italic">Vazio</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Variáveis Personalizadas */}
+          <div className="bg-white rounded-[2rem] p-8 shadow-soft border border-slate-100">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Tag size={20} className="text-indigo-500" /> Variáveis Personalizadas</h3>
+            </div>
+
+            {/* Form Add */}
+            <div className="bg-slate-50 rounded-2xl p-6 mb-6 border border-slate-200">
+              <h4 className="text-sm font-bold text-slate-700 mb-4">Adicionar Nova Variável</h4>
+              <div className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="flex-1 w-full">
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1 block">Nome da Variável</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-3 text-slate-400 font-mono text-sm">{'{{'}</span>
+                    <input
+                      id="new-var-key"
+                      type="text"
+                      className="w-full pl-8 pr-8 py-2.5 rounded-xl border border-slate-200 text-sm font-mono font-bold text-slate-700 focus:outline-none focus:border-indigo-500 bg-white"
+                      placeholder="exemplo_promocao"
+                    />
+                    <span className="absolute right-3 top-3 text-slate-400 font-mono text-sm">{'}}'}</span>
+                  </div>
+                </div>
+                <div className="flex-[2] w-full">
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1 block">Valor Substituído</label>
+                  <input
+                    id="new-var-value"
+                    type="text"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 focus:outline-none focus:border-indigo-500 bg-white"
+                    placeholder="Conteúdo da variável..."
+                  />
+                </div>
+                <button
+                  onClick={async () => {
+                    const kInput = document.getElementById('new-var-key') as HTMLInputElement;
+                    const vInput = document.getElementById('new-var-value') as HTMLInputElement;
+                    const k = kInput.value;
+                    const v = vInput.value;
+
+                    if (!k || !v) return showNotification('Preencha os campos', 'error');
+
+                    const token = localStorage.getItem('token');
+                    try {
+                      const res = await fetch('http://localhost:3001/api/settings/variables', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ key: k, value: v })
+                      });
+
+                      if (res.status === 404) {
+                        showNotification('Erro: Endpoint não encontrado. Reinicie o backend.', 'error');
+                        return;
+                      }
+
+                      if (res.ok) {
+                        showNotification('Variável salva!', 'success');
+                        fetchCompany(); // Recarrega variables
+                        kInput.value = '';
+                        vInput.value = '';
+                      } else {
+                        showNotification('Erro ao salvar.', 'error');
+                      }
+                    } catch (e) {
+                      console.error(e);
+                      showNotification('Erro de conexão.', 'error');
+                    }
+                  }}
+                  className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-600/20"
+                >
+                  Adicionar
+                </button>
+              </div>
+            </div>
+
+            {/* Lista */}
+            <div className="space-y-3">
+              {companyData.custom_variables && companyData.custom_variables.length > 0 ? (
+                companyData.custom_variables.map((v: any) => (
+                  <div key={v.key} className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors group">
+                    <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold font-mono text-xs">
+                      {'{{ }}'}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-slate-800 text-sm font-mono mb-0.5">{`{{${v.key}}}`}</p>
+                      <p className="text-xs text-slate-500 truncate max-w-md">{v.value}</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Excluir variável?')) return;
+                        const token = localStorage.getItem('token');
+                        try {
+                          await fetch(`http://localhost:3001/api/settings/variables/${v.key}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` }
+                          });
+                          fetchCompany();
+                          showNotification('Variável removida.', 'success');
+                        } catch (e) { console.error(e); }
+                      }}
+                      className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-slate-400 py-8 text-sm">Nenhuma variável personalizada.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notification Toast */}
 

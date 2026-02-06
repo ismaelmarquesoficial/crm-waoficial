@@ -9,10 +9,11 @@ router.use(verifyToken);
 // === PERFIL DA EMPRESA ===
 
 // Obter dados do Tenant atual
+// Obter dados do Tenant atual
 router.get('/company', async (req, res) => {
     try {
         const result = await db.query(
-            'SELECT id, name, plan_status, company_name, cnpj, contact_phone, contact_email, address, website, plan_type, plan_limits FROM tenants WHERE id = $1',
+            'SELECT id, name, plan_status, company_name, cnpj, contact_phone, contact_email, address, website, pix_key, custom_variables, plan_type, plan_limits FROM tenants WHERE id = $1',
             [req.tenantId]
         );
 
@@ -29,21 +30,78 @@ router.get('/company', async (req, res) => {
 
 // Atualizar dados do Tenant
 router.put('/company', async (req, res) => {
-    const { company_name, cnpj, contact_phone, contact_email, address, website } = req.body;
+    const { company_name, cnpj, contact_phone, contact_email, address, website, pix_key } = req.body;
 
     try {
         const result = await db.query(
             `UPDATE tenants 
-             SET company_name = $1, cnpj = $2, contact_phone = $3, contact_email = $4, address = $5, website = $6, updated_at = NOW()
-             WHERE id = $7
+             SET company_name = $1, cnpj = $2, contact_phone = $3, contact_email = $4, address = $5, website = $6, pix_key = $7, updated_at = NOW()
+             WHERE id = $8
              RETURNING *`,
-            [company_name, cnpj, contact_phone, contact_email, address, website, req.tenantId]
+            [company_name, cnpj, contact_phone, contact_email, address, website, pix_key || null, req.tenantId]
         );
 
         res.json({ message: 'Dados atualizados com sucesso!', tenant: result.rows[0] });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Erro ao atualizar dados da empresa.' });
+    }
+});
+
+// === GESTÃO DE VARIÁVEIS ===
+
+// Adicionar/Atualizar Variável Customizada
+router.post('/variables', async (req, res) => {
+    const { key, value } = req.body;
+    if (!key || !value) return res.status(400).json({ error: 'Chave e valor são obrigatórios.' });
+
+    // Normalizar chave (sem espaços, lowercase)
+    const normalizedKey = key.toLowerCase().replace(/\s+/g, '_');
+
+    try {
+        // Buscar variáveis atuais
+        const currentRes = await db.query('SELECT custom_variables FROM tenants WHERE id = $1', [req.tenantId]);
+        let vars = currentRes.rows[0]?.custom_variables || [];
+
+        // Se vars for null (por algum motivo), inicializar
+        if (!Array.isArray(vars)) vars = [];
+
+        // Verificar se já existe e atualizar
+        const existingIndex = vars.findIndex(v => v.key === normalizedKey);
+        if (existingIndex >= 0) {
+            vars[existingIndex].value = value;
+        } else {
+            vars.push({ key: normalizedKey, value });
+        }
+
+        // Salvar
+        await db.query('UPDATE tenants SET custom_variables = $1 WHERE id = $2', [JSON.stringify(vars), req.tenantId]);
+
+        res.json(vars);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erro ao salvar variável.' });
+    }
+});
+
+// Remover Variável
+router.delete('/variables/:key', async (req, res) => {
+    const { key } = req.params;
+
+    try {
+        const currentRes = await db.query('SELECT custom_variables FROM tenants WHERE id = $1', [req.tenantId]);
+        let vars = currentRes.rows[0]?.custom_variables || [];
+
+        if (!Array.isArray(vars)) vars = [];
+
+        const newVars = vars.filter(v => v.key !== key);
+
+        await db.query('UPDATE tenants SET custom_variables = $1 WHERE id = $2', [JSON.stringify(newVars), req.tenantId]);
+
+        res.json(newVars);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erro ao remover variável.' });
     }
 });
 
