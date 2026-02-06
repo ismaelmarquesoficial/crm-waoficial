@@ -184,4 +184,104 @@ router.delete('/team/:id', async (req, res) => {
     }
 });
 
+// === GESTÃO DE RESPOSTAS RÁPIDAS (QUICK REPLIES) ===
+
+// Listar todas as respostas rápidas do tenant
+router.get('/quick-replies', async (req, res) => {
+    try {
+        const result = await db.query(
+            'SELECT id, shortcut, message, created_at, updated_at FROM quick_replies WHERE tenant_id = $1 ORDER BY shortcut ASC',
+            [req.tenantId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erro ao listar respostas rápidas.' });
+    }
+});
+
+// Criar nova resposta rápida
+router.post('/quick-replies', async (req, res) => {
+    const { shortcut, message } = req.body;
+
+    if (!shortcut || !message) {
+        return res.status(400).json({ error: 'Atalho e mensagem são obrigatórios.' });
+    }
+
+    // Normalizar shortcut (remover espaços, lowercase)
+    const normalizedShortcut = shortcut.toLowerCase().trim().replace(/\s+/g, '_');
+
+    try {
+        const result = await db.query(
+            `INSERT INTO quick_replies (tenant_id, shortcut, message, created_at, updated_at)
+             VALUES ($1, $2, $3, NOW(), NOW())
+             RETURNING *`,
+            [req.tenantId, normalizedShortcut, message]
+        );
+
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        if (err.code === '23505') { // Unique violation
+            return res.status(400).json({ error: 'Este atalho já existe.' });
+        }
+        console.error(err);
+        res.status(500).json({ error: 'Erro ao criar resposta rápida.' });
+    }
+});
+
+// Atualizar resposta rápida
+router.put('/quick-replies/:id', async (req, res) => {
+    const { id } = req.params;
+    const { shortcut, message } = req.body;
+
+    if (!shortcut || !message) {
+        return res.status(400).json({ error: 'Atalho e mensagem são obrigatórios.' });
+    }
+
+    const normalizedShortcut = shortcut.toLowerCase().trim().replace(/\s+/g, '_');
+
+    try {
+        const result = await db.query(
+            `UPDATE quick_replies 
+             SET shortcut = $1, message = $2, updated_at = NOW()
+             WHERE id = $3 AND tenant_id = $4
+             RETURNING *`,
+            [normalizedShortcut, message, id, req.tenantId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Resposta rápida não encontrada.' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Este atalho já existe.' });
+        }
+        console.error(err);
+        res.status(500).json({ error: 'Erro ao atualizar resposta rápida.' });
+    }
+});
+
+// Deletar resposta rápida
+router.delete('/quick-replies/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await db.query(
+            'DELETE FROM quick_replies WHERE id = $1 AND tenant_id = $2 RETURNING id',
+            [id, req.tenantId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Resposta rápida não encontrada.' });
+        }
+
+        res.json({ message: 'Resposta rápida removida com sucesso.' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Erro ao remover resposta rápida.' });
+    }
+});
+
 module.exports = router;

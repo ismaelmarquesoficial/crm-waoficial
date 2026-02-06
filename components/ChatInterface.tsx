@@ -37,7 +37,8 @@ import {
   Instagram,
   MessageSquare,
   Globe,
-  LayoutTemplate
+  LayoutTemplate,
+  Zap
 } from 'lucide-react';
 import TagBadge from './TagBadge';
 import TagManager from './TagManager';
@@ -195,6 +196,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [convToDelete, setConvToDelete] = useState<string | null>(null);
   const [isDeletingConv, setIsDeletingConv] = useState(false);
 
+  // Quick Replies State
+  const [quickReplies, setQuickReplies] = useState<any[]>([]);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [quickReplySearch, setQuickReplySearch] = useState('');
+
   useEffect(() => {
     // Fetch Company Variables on Mount
     const token = localStorage.getItem('token');
@@ -204,6 +210,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
         if (data) setCompanyVariables(data);
       })
       .catch(e => console.error('Error fetching defaults', e));
+
+    // Fetch Quick Replies
+    fetch('/api/settings/quick-replies', { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setQuickReplies(data);
+      })
+      .catch(e => console.error('Error fetching quick replies', e));
   }, []);
 
   const fetchTemplates = useCallback(async () => {
@@ -559,6 +573,31 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     if (!activeContactId || isLoadingMore || !hasMore) return;
     fetchMessages(activeContactId, messages.length);
   }, [activeContactId, isLoadingMore, hasMore, messages.length, fetchMessages]);
+
+  // Quick Reply Handler
+  const handleInputChange = (value: string) => {
+    setInputText(value);
+
+    // Detect "/" for quick replies
+    if (value.startsWith('/')) {
+      const search = value.slice(1).toLowerCase();
+      setQuickReplySearch(search);
+      setShowQuickReplies(true);
+    } else {
+      setShowQuickReplies(false);
+      setQuickReplySearch('');
+    }
+  };
+
+  const selectQuickReply = (message: string) => {
+    setInputText(message);
+    setShowQuickReplies(false);
+    setQuickReplySearch('');
+  };
+
+  const filteredQuickReplies = quickReplies.filter(qr =>
+    qr.shortcut.toLowerCase().includes(quickReplySearch.toLowerCase())
+  );
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || !activeContactId) return;
@@ -1778,18 +1817,54 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                   <textarea
                     value={inputText}
                     readOnly={!!activeTemplate}
-                    onChange={(e) => setInputText(e.target.value)}
+                    onChange={(e) => handleInputChange(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         handleSendMessage();
                       }
+                      // Navigate quick replies with arrow keys
+                      if (showQuickReplies && filteredQuickReplies.length > 0) {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          // Could add keyboard navigation here
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                        }
+                      }
                     }}
-                    placeholder={activeTemplate ? "Template selecionado (pronto para enviar)" : "Digite..."}
+                    placeholder={activeTemplate ? "Template selecionado (pronto para enviar)" : "Digite... (use / para respostas rápidas)"}
                     className={`w-full bg-transparent border-none outline-none text-sm resize-none max-h-32 scrollbar-hide ${activeTemplate ? 'text-slate-500 italic cursor-not-allowed' : 'text-slate-800'}`}
                     rows={1}
                     style={{ minHeight: '24px' }}
                   />
+
+                  {/* Quick Replies Dropdown */}
+                  {showQuickReplies && filteredQuickReplies.length > 0 && (
+                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-fade-in-up z-50 max-h-64 overflow-y-auto">
+                      <div className="p-2 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
+                        <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-2">
+                          <Zap size={12} />
+                          Respostas Rápidas
+                        </p>
+                      </div>
+                      <div className="p-2 space-y-1">
+                        {filteredQuickReplies.map((qr: any) => (
+                          <button
+                            key={qr.id}
+                            onClick={() => selectQuickReply(qr.message)}
+                            className="w-full text-left p-3 rounded-xl hover:bg-amber-50 transition-colors group border border-transparent hover:border-amber-200"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-mono font-bold text-amber-600">/{qr.shortcut}</span>
+                            </div>
+                            <p className="text-xs text-slate-600 line-clamp-2">{qr.message}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {inputText.trim() ? (

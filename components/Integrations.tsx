@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, ShieldCheck, Link2, Users, Mail, Shield, Globe, Copy, Settings, LayoutDashboard, CheckCircle, AlertCircle, X, Smartphone, Wifi, Trash2, Check, RefreshCw, Plus, Database, Tag } from 'lucide-react';
+import { MessageSquare, ShieldCheck, Link2, Users, Mail, Shield, Globe, Copy, Settings, LayoutDashboard, CheckCircle, AlertCircle, X, Smartphone, Wifi, Trash2, Check, RefreshCw, Plus, Database, Tag, Zap } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { User } from '../types';
 
@@ -192,12 +192,16 @@ const WhatsAppOfficialForm = ({ editId, onCancel, onSuccess }: { editId?: number
 
 
 const IntegrationScreen: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'integrations' | 'team' | 'company' | 'variables'>('integrations');
+  const [activeTab, setActiveTab] = useState<'integrations' | 'team' | 'company' | 'variables' | 'quick_replies'>('integrations');
   const [channels, setChannels] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [companyData, setCompanyData] = useState<any>({});
   const [loadingCompany, setLoadingCompany] = useState(false);
   const [isEditingCompany, setIsEditingCompany] = useState(false);
+
+  // Quick Replies State
+  const [quickReplies, setQuickReplies] = useState<any[]>([]);
+  const [loadingQuickReplies, setLoadingQuickReplies] = useState(false);
 
   const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
   const [editId, setEditId] = useState<number | null>(null);
@@ -312,6 +316,7 @@ const IntegrationScreen: React.FC = () => {
     if (activeTab === 'integrations' && viewMode === 'list') fetchChannels();
     if (activeTab === 'team') fetchTeam();
     if (activeTab === 'company' || activeTab === 'variables') fetchCompany();
+    if (activeTab === 'quick_replies') fetchQuickReplies();
   }, [activeTab, viewMode]);
 
   const fetchChannels = async () => {
@@ -359,6 +364,25 @@ const IntegrationScreen: React.FC = () => {
       setCompanyData({});
     } finally {
       setLoadingCompany(false);
+    }
+  };
+
+  const fetchQuickReplies = async () => {
+    setLoadingQuickReplies(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('http://localhost:3001/api/settings/quick-replies', { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setQuickReplies(Array.isArray(data) ? data : []);
+      } else {
+        setQuickReplies([]);
+      }
+    } catch (error) {
+      console.error(error);
+      setQuickReplies([]);
+    } finally {
+      setLoadingQuickReplies(false);
     }
   };
 
@@ -465,7 +489,7 @@ const IntegrationScreen: React.FC = () => {
         </div>
 
         <div className="flex gap-2 p-1.5 bg-white/50 backdrop-blur-sm rounded-xl border border-slate-200/60 inline-flex">
-          {['integrations', 'team', 'company', 'variables'].map((tab) => (
+          {['integrations', 'team', 'company', 'variables', 'quick_replies'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -474,7 +498,7 @@ const IntegrationScreen: React.FC = () => {
                 : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
                 }`}
             >
-              {tab === 'integrations' ? 'Canais' : tab === 'team' ? 'Equipe' : tab === 'company' ? 'Empresa' : 'Variáveis'}
+              {tab === 'integrations' ? 'Canais' : tab === 'team' ? 'Equipe' : tab === 'company' ? 'Empresa' : tab === 'variables' ? 'Variáveis' : 'Respostas Rápidas'}
             </button>
           ))}
         </div>
@@ -1013,6 +1037,125 @@ const IntegrationScreen: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ABA RESPOSTAS RÁPIDAS */}
+      {activeTab === 'quick_replies' && (
+        <div className="max-w-4xl animate-fade-in mx-auto pb-20">
+          <div className="flex justify-between items-start mb-10">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Respostas Rápidas</h2>
+              <p className="text-slate-500 mt-1">Crie atalhos para mensagens frequentes. Use "/" no chat para acessá-las.</p>
+            </div>
+          </div>
+
+          {/* Form Add */}
+          <div className="bg-white rounded-[2rem] p-8 shadow-soft border border-slate-100 mb-8">
+            <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center gap-2">
+              <Zap size={20} className="text-amber-500" /> Nova Resposta Rápida
+            </h3>
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="flex-1 w-full">
+                <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1 block">Atalho</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-3 text-slate-400 font-mono text-sm">/</span>
+                  <input
+                    id="new-qr-shortcut"
+                    type="text"
+                    className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm font-mono font-bold text-slate-700 focus:outline-none focus:border-amber-500 bg-white"
+                    placeholder="ola"
+                  />
+                </div>
+              </div>
+              <div className="flex-[2] w-full">
+                <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1 block">Mensagem</label>
+                <textarea
+                  id="new-qr-message"
+                  rows={2}
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 focus:outline-none focus:border-amber-500 bg-white resize-none"
+                  placeholder="Olá! Como posso ajudar você hoje?"
+                />
+              </div>
+              <button
+                onClick={async () => {
+                  const shortcutInput = document.getElementById('new-qr-shortcut') as HTMLInputElement;
+                  const messageInput = document.getElementById('new-qr-message') as HTMLTextAreaElement;
+                  const shortcut = shortcutInput.value;
+                  const message = messageInput.value;
+
+                  if (!shortcut || !message) return showNotification('Preencha os campos', 'error');
+
+                  const token = localStorage.getItem('token');
+                  try {
+                    const res = await fetch('http://localhost:3001/api/settings/quick-replies', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ shortcut, message })
+                    });
+
+                    if (res.ok) {
+                      showNotification('Resposta rápida criada!', 'success');
+                      fetchQuickReplies();
+                      shortcutInput.value = '';
+                      messageInput.value = '';
+                    } else {
+                      const error = await res.json();
+                      showNotification(error.error || 'Erro ao salvar.', 'error');
+                    }
+                  } catch (e) {
+                    console.error(e);
+                    showNotification('Erro de conexão.', 'error');
+                  }
+                }}
+                className="bg-amber-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
+              >
+                Adicionar
+              </button>
+            </div>
+          </div>
+
+          {/* Lista */}
+          <div className="bg-white rounded-[2rem] p-8 shadow-soft border border-slate-100">
+            <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center gap-2">
+              <MessageSquare size={20} className="text-blue-500" /> Suas Respostas Rápidas
+            </h3>
+            <div className="space-y-3">
+              {quickReplies && quickReplies.length > 0 ? (
+                quickReplies.map((qr: any) => (
+                  <div key={qr.id} className="flex items-start gap-4 p-4 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors group">
+                    <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600 font-bold font-mono text-xs flex-shrink-0">
+                      /{qr.shortcut}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-800 text-sm font-mono mb-1">/{qr.shortcut}</p>
+                      <p className="text-xs text-slate-600 whitespace-pre-wrap break-words">{qr.message}</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Excluir resposta rápida?')) return;
+                        const token = localStorage.getItem('token');
+                        try {
+                          await fetch(`http://localhost:3001/api/settings/quick-replies/${qr.id}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` }
+                          });
+                          fetchQuickReplies();
+                          showNotification('Resposta removida.', 'success');
+                        } catch (e) { console.error(e); }
+                      }}
+                      className="p-2 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-slate-400 py-8 text-sm">Nenhuma resposta rápida cadastrada.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Notification Toast */}
 
