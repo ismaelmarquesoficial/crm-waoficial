@@ -220,6 +220,9 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // System Variables State
+  const [companyVars, setCompanyVars] = useState<any[]>([]);
+
   // --- Effects ---
 
   useEffect(() => {
@@ -309,9 +312,36 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
 
   useEffect(() => {
     if (channels.length > 0 && !selectedChannel) setSelectedChannel(channels[0].id.toString());
+
+    const token = localStorage.getItem('token');
+
+    // Fetch Pipelines
     fetch('http://localhost:3001/api/crm/pipelines', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      headers: { Authorization: `Bearer ${token}` }
     }).then(r => r.json()).then(setPipelines).catch(() => { });
+
+    // Fetch Company Vars
+    fetch('http://localhost:3001/api/settings/company', {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(r => r.json()).then(data => {
+      const list = [
+        { k: '{{company.name}}', d: 'Nome Empresa', v: data.name },
+        { k: '{{company.company_name}}', d: 'Razão Social', v: data.company_name },
+        { k: '{{company.cnpj}}', d: 'CNPJ', v: data.cnpj },
+        { k: '{{company.contact_email}}', d: 'Email', v: data.contact_email },
+        { k: '{{company.contact_phone}}', d: 'Telefone', v: data.contact_phone },
+        { k: '{{company.website}}', d: 'Site', v: data.website },
+        { k: '{{company.address}}', d: 'Endereço', v: data.address },
+        { k: '{{company.pix_key}}', d: 'Chave PIX', v: data.pix_key },
+      ];
+      if (data.custom_variables && Array.isArray(data.custom_variables)) {
+        data.custom_variables.forEach((cv: any) => {
+          list.push({ k: `{{${cv.key}}}`, d: cv.key, v: cv.value });
+        });
+      }
+      setCompanyVars(list);
+    }).catch(console.error);
+
   }, [channels, selectedChannel]);
 
   const handleCreatePipeline = async () => {
@@ -393,6 +423,10 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
           if (map.type === 'column') return row[map.value] || '';
           if (map.type === 'custom') return map.value;
           if (map.type === 'contact_name') return row['name'] || row['nome'] || '';
+          if (map.type === 'system_var') {
+            const found = companyVars.find(cv => cv.k === map.value);
+            return found ? (found.v || '') : '';
+          }
           return '';
         });
 
@@ -412,6 +446,10 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
           const map = varMapping[v];
           if (map?.type === 'custom' && map.value) return map.value;
           if (map?.type === 'contact_name') return r.name || '';
+          if (map?.type === 'system_var') {
+            const found = companyVars.find(cv => cv.k === map.value);
+            return found ? (found.v || '') : '';
+          }
           if (r.manualVars && r.manualVars[idx]) return r.manualVars[idx];
           return '';
         });
@@ -419,7 +457,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
       }));
     }
 
-  }, [varMapping, rawCsvData, csvPhoneColumn, templateVars, inputMode]);
+  }, [varMapping, rawCsvData, csvPhoneColumn, templateVars, inputMode, companyVars]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -563,11 +601,11 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 text-slate-800">
-      <div className="bg-white w-full max-w-2xl rounded-[20px] shadow-[0_10px_40px_-5px_rgba(6,104,225,0.05)] flex flex-col max-h-[90vh] border-t-4 border-t-transparent relative overflow-hidden">
+      <div className="bg-white w-full max-w-2xl rounded-[20px] shadow-[0_10px_40px_-5px_rgba(6,104,225,0.05)] flex flex-col max-h-[85vh] border-t-4 border-t-transparent relative overflow-hidden">
         {/* Top Gradient Decorator */}
         <div className="absolute top-0 inset-x-0 h-1 bg-[linear-gradient(90deg,#0668E1_0%,#25D366_100%)] z-20" />
 
-        <div className="px-6 py-5 border-b border-slate-50 flex justify-between items-center bg-white/90 backdrop-blur-xl z-10">
+        <div className="px-5 py-4 border-b border-slate-50 flex justify-between items-center bg-white/90 backdrop-blur-xl z-10">
           <div>
             <div className="flex justify-between items-center mb-2">
               <h2 className="text-base font-bold tracking-tight text-slate-800">Nova Campanha</h2>
@@ -582,7 +620,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
             <X size={16} strokeWidth={2} />
           </button>
         </div>
-        <div className="p-6 flex-1 overflow-y-auto space-y-5 bg-white relative z-0">
+        <div className="p-5 flex-1 overflow-y-auto space-y-5 bg-white relative z-0 custom-scrollbar">
           {step === 1 && (<div className="space-y-5 animate-fade-in">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -831,6 +869,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                             <option value="custom">Texto Fixo</option>
                             <option value="column">Coluna CSV</option>
                             <option value="contact_name">Nome do Contato</option>
+                            <option value="system_var" className="font-bold text-indigo-600">Variável Global</option>
                           </select>
 
                           <div className="relative">
@@ -847,6 +886,17 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                               ) : <div className="text-[10px] text-red-400 italic p-2 bg-red-50 rounded-lg">Sem CSV carregado</div>
                             ) : varMapping[v]?.type === 'contact_name' ? (
                               <div className="text-[10px] text-slate-400 italic p-2 bg-slate-50 rounded-lg flex items-center gap-1"><User size={10} /> Nome do Contato</div>
+                            ) : varMapping[v]?.type === 'system_var' ? (
+                              <select
+                                value={varMapping[v]?.value}
+                                onChange={e => setVarMapping({ ...varMapping, [v]: { ...varMapping[v], value: e.target.value } })}
+                                className="w-full bg-slate-50 border-none text-[11px] text-slate-700 p-2 rounded-lg focus:ring-0 outline-none cursor-pointer hover:bg-slate-100 transition-colors font-mono"
+                              >
+                                <option value="">Selecione a Variável...</option>
+                                {companyVars.map(cv => (
+                                  <option key={cv.k} value={cv.k}>{cv.d}</option>
+                                ))}
+                              </select>
                             ) : (
                               <input
                                 placeholder="Digite o valor..."
@@ -1158,7 +1208,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
             )}
           </div >)}
         </div >
-        <div className="p-6 border-t border-slate-50 bg-white/80 backdrop-blur-xl flex justify-between items-center">
+        <div className="p-4 border-t border-slate-50 bg-white/80 backdrop-blur-xl flex justify-between items-center">
           <button
             onClick={() => setStep(step - 1)}
             disabled={step === 1}
@@ -1170,7 +1220,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
             <button
               onClick={() => setStep(step + 1)}
               disabled={(step === 1 && (!name || !selectedChannel || recipientsData.length === 0)) || (step === 2 && !selectedTemplate) || (step === 3 && crmTriggerRule !== 'none' && (!selectedPipelineId || !selectedStageId))}
-              className="bg-slate-900 hover:bg-indigo-600 text-white px-8 py-3.5 rounded-full text-xs font-bold flex items-center gap-2.5 shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all group disabled:opacity-50 disabled:scale-100 disabled:bg-slate-200 disabled:shadow-none"
+              className="bg-slate-900 hover:bg-indigo-600 text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2.5 shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all group disabled:opacity-50 disabled:scale-100 disabled:bg-slate-200 disabled:shadow-none"
             >
               Próximo Passo <ChevronRight size={16} strokeWidth={2.5} />
             </button>
@@ -1178,7 +1228,7 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
             <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-4 rounded-full text-sm font-bold flex items-center gap-2.5 shadow-2xl shadow-indigo-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all group disabled:opacity-50"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-full text-sm font-bold flex items-center gap-2.5 shadow-2xl shadow-indigo-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all group disabled:opacity-50"
             >
               {isSubmitting ? <RefreshCw className="animate-spin" size={18} /> : <Check size={18} strokeWidth={3} />}
               Finalizar e {scheduledAt ? 'Agendar' : 'Iniciar'}
