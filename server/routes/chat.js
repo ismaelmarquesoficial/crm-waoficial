@@ -30,6 +30,8 @@ router.get('/', async (req, res) => {
                 c.name, 
                 c.phone, 
                 c.email,
+                c.custom_fields,
+                c.notes,
                 c.last_interaction,
                 c.tags,
                 c.channel,
@@ -92,7 +94,7 @@ router.get('/contacts-by-tag', async (req, res) => {
         if (!tag) return res.status(400).json({ error: 'Tag é obrigatória' });
 
         const result = await db.query(
-            "SELECT id, name, phone, email, tags FROM contacts WHERE tenant_id = $1 AND $2 = ANY(tags) ORDER BY name",
+            "SELECT id, name, phone, email, tags, custom_fields, notes FROM contacts WHERE tenant_id = $1 AND $2 = ANY(tags) ORDER BY name",
             [tenantId, tag]
         );
         res.json(result.rows);
@@ -115,6 +117,8 @@ router.get('/contacts/:contactId', async (req, res) => {
                 c.name,
                 c.phone,
                 c.email,
+                c.custom_fields,
+                c.notes,
                 c.tags,
                 c.last_interaction,
                 c.created_at,
@@ -405,6 +409,51 @@ router.post('/contacts', async (req, res) => {
     } catch (err) {
         console.error('Erro ao criar contato:', err);
         res.status(500).json({ error: 'Erro ao criar contato' });
+    }
+});
+
+// Atualizar contato
+router.put('/contacts/:contactId', async (req, res) => {
+    try {
+        const { contactId } = req.params;
+        const { name, phone, email, custom_fields, notes, tags } = req.body;
+        const tenantId = req.tenantId || (req.user && req.user.tenantId);
+
+        // Validar telefone se for alterado
+        if (phone) {
+            const cleanPhone = String(phone).replace(/\D/g, '');
+            const dup = await db.query('SELECT id FROM contacts WHERE phone = $1 AND tenant_id = $2 AND id != $3', [cleanPhone, tenantId, contactId]);
+            if (dup.rows.length > 0) return res.status(400).json({ error: 'Telefone já em uso por outro contato' });
+        }
+
+        const result = await db.query(`
+            UPDATE contacts 
+            SET 
+                name = COALESCE($1, name),
+                phone = COALESCE($2, phone),
+                email = $3,
+                custom_fields = COALESCE($4, custom_fields),
+                notes = $5,
+                tags = COALESCE($6, tags)
+            WHERE id = $7 AND tenant_id = $8
+            RETURNING *
+        `, [
+            name || null,
+            phone ? String(phone).replace(/\D/g, '') : null,
+            email || null, // Se undefined ou null, vira null. (Cuidado: Se frontend nao mandar email, vira null e apaga!)
+            custom_fields || null,
+            notes || null,
+            tags || null,
+            contactId,
+            tenantId
+        ]);
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Contato não encontrado' });
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Erro ao atualizar contato:', err);
+        res.status(500).json({ error: 'Erro ao atualizar contato' });
     }
 });
 

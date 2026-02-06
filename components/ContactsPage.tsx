@@ -32,6 +32,8 @@ interface Contact {
     phone: string;
     email?: string;
     tags: string[];
+    custom_fields?: Record<string, string>;
+    notes?: string;
     deals?: Deal[];
     last_interaction?: string;
     unread_count?: number;
@@ -56,7 +58,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     const [showViewModal, setShowViewModal] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [contactToDelete, setContactToDelete] = useState<{ id: string, name: string } | null>(null);
-    const [newContact, setNewContact] = useState({ name: '', phone: '', email: '' });
+    const [newContact, setNewContact] = useState<{ name: string, phone: string, email: string, tags: string[], pipeline_id?: string, stage_id?: string }>({ name: '', phone: '', email: '', tags: [] });
     const [isDeleting, setIsDeleting] = useState<string | null>(null);
     const [isSavingContact, setIsSavingContact] = useState(false);
     const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -67,6 +69,12 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
     const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
     const [allTagsSystem, setAllTagsSystem] = useState<string[]>([]);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    // Edit State
+    const [isEditing, setIsEditing] = useState(false);
+    const [editFormData, setEditFormData] = useState<any>({});
+    const [customFieldsList, setCustomFieldsList] = useState<{ key: string, value: string }[]>([]);
+    const [selectedPipelineToAdd, setSelectedPipelineToAdd] = useState<string>('');
 
     // Auto-hide notification
     useEffect(() => {
@@ -347,27 +355,193 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
 
         setIsSavingContact(true);
         try {
-            const response = await fetch('/api/chat/contacts', {
+            // 1. Create Contact
+            const contactRes = await fetch('/api/chat/contacts', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(newContact)
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    name: newContact.name,
+                    phone: newContact.phone,
+                    email: newContact.email,
+                    tags: newContact.tags
+                })
             });
 
-            if (response.ok) {
-                await fetchContacts();
-                setShowAddModal(false);
-                setNewContact({ name: '', phone: '', email: '' });
-                setNotification({ message: 'Contato criado com sucesso!', type: 'success' });
-            } else {
-                const err = await response.json();
-                setNotification({ message: err.error || 'Erro ao criar contato', type: 'error' });
+            if (!contactRes.ok) {
+                const err = await contactRes.json();
+                throw new Error(err.error || 'Erro ao criar contato');
             }
-        } catch (error) {
-            console.error('Erro ao criar contato:', error);
-            setNotification({ message: 'Erro de conexão ao criar contato', type: 'error' });
+
+            const createdContact = await contactRes.json();
+
+            // 2. Create Deal if requested
+            if (newContact.pipeline_id && newContact.stage_id) {
+                await fetch('/api/crm/deals', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        contact_id: createdContact.id,
+                        pipeline_id: newContact.pipeline_id,
+                        stage_id: newContact.stage_id,
+                        title: createdContact.name,
+                        name: createdContact.name,
+                        phone: createdContact.phone,
+                        value: 0
+                    })
+                });
+            }
+
+            await fetchContacts();
+            setShowAddModal(false);
+            setNewContact({ name: '', phone: '', email: '', tags: [] }); // Reset
+            setNotification({ message: 'Contato criado!', type: 'success' });
+
+        } catch (error: any) {
+            console.error(error);
+            setNotification({ message: error.message || 'Erro', type: 'error' });
+        } finally {
+            setIsSavingContact(false);
+        }
+    };
+
+    // --- Helpers para Edição Rápida e Tags ---
+
+    const refreshContactDetails = async (id: string) => {
+        const res = await fetch(`/api/chat/contacts/${id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (res.ok) {
+            const data = await res.json();
+            setSelectedContact(data);
+            setContacts(prev => prev.map(c => c.id === data.id ? data : c));
+        }
+    };
+
+    const updateDealStage = async (dealId: string, stageId: string) => {
+        try {
+            await fetch(`/api/crm/deals/${dealId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ stage_id: stageId })
+            });
+            if (selectedContact) refreshContactDetails(selectedContact.id);
+            setNotification({ message: 'Estágio atualizado!', type: 'success' });
+        } catch (e) {
+            setNotification({ message: 'Erro ao atualizar estágio', type: 'error' });
+        }
+    };
+
+    const addDealToPipeline = async () => {
+        if (!selectedPipelineToAdd || !selectedContact) return;
+        const pipe = pipelines.find(p => String(p.id) === String(selectedPipelineToAdd));
+        if (!pipe || pipe.stages.length === 0) return;
+
+        try {
+            await fetch('/api/crm/deals', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    contact_id: selectedContact.id,
+                    pipeline_id: pipe.id,
+                    stage_id: selectedStageId || pipe.stages[0].id,
+                    title: selectedContact.name,
+                    name: selectedContact.name,
+                    phone: selectedContact.phone,
+                    value: 0
+                })
+            });
+            refreshContactDetails(selectedContact.id);
+            setNotification({ message: 'Adicionado ao funil!', type: 'success' });
+            setSelectedPipelineToAdd('');
+            setSelectedStageId('');
+        } catch (e) {
+            setNotification({ message: 'Erro ao criar negócio', type: 'error' });
+        }
+    };
+
+    const handleEditTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const val = e.currentTarget.value.trim();
+            if (val && !editFormData.tags?.includes(val)) {
+                setEditFormData((prev: any) => ({ ...prev, tags: [...(prev.tags || []), val] }));
+                e.currentTarget.value = '';
+            }
+        }
+    };
+
+    const removeEditTag = (tag: string) => {
+        setEditFormData((prev: any) => ({ ...prev, tags: (prev.tags || []).filter((t: string) => t !== tag) }));
+    };
+
+    const handleNewTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const val = e.currentTarget.value.trim();
+            if (val && !newContact.tags?.includes(val)) {
+                setNewContact(prev => ({ ...prev, tags: [...(prev.tags || []), val] }));
+                e.currentTarget.value = '';
+            }
+        }
+    };
+
+    const removeNewTag = (tag: string) => {
+        setNewContact(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tag) }));
+    };
+
+
+
+    const handleStartEdit = () => {
+        if (!selectedContact) return;
+        setEditFormData({
+            name: selectedContact.name,
+            phone: selectedContact.phone,
+            email: selectedContact.email || '',
+            notes: selectedContact.notes || '',
+            tags: selectedContact.tags || []
+        });
+        const fields = selectedContact.custom_fields || {};
+        const list = Object.entries(fields).map(([k, v]) => ({ key: k, value: v as string }));
+        setCustomFieldsList(list);
+        setIsEditing(true);
+    };
+
+    const handleSaveEdit = async () => {
+        if (!selectedContact) return;
+        setIsSavingContact(true);
+        try {
+            const custom_fields = customFieldsList.reduce((acc, curr) => {
+                if (curr.key.trim()) acc[curr.key.trim()] = curr.value;
+                return acc;
+            }, {} as Record<string, string>);
+
+            const body = {
+                ...editFormData,
+                custom_fields
+            };
+
+            const res = await fetch(`/api/chat/contacts/${selectedContact.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(body)
+            });
+
+            if (res.ok) {
+                const updated = await res.json();
+                setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
+                setSelectedContact(updated);
+                setIsEditing(false);
+                setNotification({ message: 'Contato atualizado com sucesso!', type: 'success' });
+            } else {
+                let err;
+                try {
+                    err = await res.json();
+                } catch (e) {
+                    err = { error: `Erro ${res.status}: Tente reiniciar o servidor.` };
+                }
+                setNotification({ message: err.error || 'Erro ao atualizar', type: 'error' });
+            }
+        } catch (e) {
+            console.error(e);
+            setNotification({ message: 'Erro de conexão', type: 'error' });
         } finally {
             setIsSavingContact(false);
         }
@@ -578,7 +752,7 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
 
                                             {/* Ações Rápidas */}
                                             <td className="px-5 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                                                <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 group-hover:translate-x-0">
+                                                <div className="flex items-center justify-end gap-1.5">
                                                     <button
                                                         onClick={() => handleOpenChat(contact.id)}
                                                         title="Abrir Chat"
@@ -820,126 +994,376 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                 </div>
             )}
 
-            {/* Modal de Detalhes do Contato */}
+            {/* Modal de Detalhes / Edição do Contato */}
             {showViewModal && selectedContact && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[55] p-4 animate-fade-in shadow-2xl">
-                    <div className="bg-white rounded-[2.5rem] max-w-2xl w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+                    <div className={`bg-white rounded-[2.5rem] w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20 max-h-[90vh] flex flex-col transition-all duration-500 ${isEditing ? 'max-w-4xl' : 'max-w-md'}`}>
                         {/* Header com degradê padrão */}
-                        <div className="modal-header-gradient relative overflow-hidden">
+                        <div className="modal-header-gradient relative overflow-hidden shrink-0">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
                             <div className="flex items-center gap-4 relative z-10">
                                 <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/30 font-bold text-lg">
                                     {selectedContact.name.charAt(0).toUpperCase()}
                                 </div>
-                                <div>
-                                    <h2 className="text-xl font-bold">{selectedContact.name}</h2>
+                                <div className="flex-1">
+                                    {isEditing ? (
+                                        <input
+                                            value={editFormData.name}
+                                            onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
+                                            className="text-xl font-bold bg-white/20 border border-white/30 rounded px-2 py-1 text-white placeholder-white/50 w-full outline-none focus:bg-white/30"
+                                            placeholder="Nome do Contato"
+                                        />
+                                    ) : (
+                                        <h2 className="text-xl font-bold">{selectedContact.name}</h2>
+                                    )}
                                     <div className="flex items-center gap-2 text-white/80 text-[10px] font-medium mt-0.5">
                                         <div className="flex items-center gap-1">
                                             <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
-                                            Ativo no Sistema
+                                            {isEditing ? 'Editando Perfil' : 'Ativo no Sistema'}
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            <button onClick={() => setShowViewModal(false)} className="p-2 hover:bg-white/20 rounded-xl text-white transition-all relative z-10">
+                            <button onClick={() => { setShowViewModal(false); setIsEditing(false); }} className="p-2 hover:bg-white/20 rounded-xl text-white transition-all relative z-10">
                                 <X size={22} />
                             </button>
                         </div>
 
-                        {/* Conteúdo do Modal */}
-                        <div className="p-6 space-y-6">
-                            <div className="flex justify-between items-center">
-                                <h3 className="text-sm font-bold text-slate-800">Detalhes do Perfil</h3>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => {
-                                            handleOpenChat(selectedContact.id);
-                                            setShowViewModal(false);
-                                        }}
-                                        className="px-4 py-2 bg-brand-gradient text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 hover:contrast-125 active:scale-95 transition-all text-xs flex items-center gap-2"
-                                    >
-                                        <MessageCircle size={16} />
-                                        Abrir Chat
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="space-y-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Informações de Contato</label>
-                                        <div className="space-y-2">
-                                            <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
-                                                <div className="w-9 h-9 bg-brand-gradient rounded-lg shadow-sm flex items-center justify-center text-white">
-                                                    <Phone size={16} />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">WhatsApp</p>
-                                                    <p className="text-xs font-bold text-slate-700">{selectedContact.phone}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
-                                                <div className="w-9 h-9 bg-brand-gradient rounded-lg shadow-sm flex items-center justify-center text-white">
-                                                    <Mail size={16} />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</p>
-                                                    <p className="text-xs font-bold text-slate-700 truncate">{selectedContact.email || 'Não informado'}</p>
-                                                </div>
-                                            </div>
+                        {/* Conteúdo do Modal (Scrollable) */}
+                        <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+                            {!isEditing ? (
+                                <>
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="text-sm font-bold text-slate-800">Detalhes do Perfil</h3>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleStartEdit}
+                                                className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all text-xs flex items-center gap-2"
+                                            >
+                                                <Edit2 size={14} /> Editar
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    handleOpenChat(selectedContact.id);
+                                                    setShowViewModal(false);
+                                                }}
+                                                className="px-4 py-2 bg-brand-gradient text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 hover:contrast-125 active:scale-95 transition-all text-xs flex items-center gap-2"
+                                            >
+                                                <MessageCircle size={16} />
+                                                Abrir Chat
+                                            </button>
                                         </div>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Tags do Cliente</label>
-                                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-wrap gap-1.5">
-                                            {selectedContact.tags && selectedContact.tags.length > 0 ? (
-                                                selectedContact.tags.map(tag => (
-                                                    <span key={tag} className="px-2.5 py-1 bg-white text-blue-600 rounded-lg text-[10px] font-bold border border-blue-100 shadow-sm">
-                                                        {tag}
-                                                    </span>
-                                                ))
-                                            ) : (
-                                                <p className="text-[10px] text-slate-400 italic">Nenhuma tag atribuída</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Presença em Pipelines</label>
-                                        <div className="space-y-2">
-                                            {selectedContact.deals && selectedContact.deals.length > 0 ? (
-                                                selectedContact.deals.map(deal => (
-                                                    <div key={deal.id} className="p-3 bg-white rounded-xl border border-slate-100 shadow-sm border-l-4" style={{ borderLeftColor: deal.stage_color }}>
-                                                        <div className="flex items-center justify-between mb-0.5">
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase">{deal.pipeline_name}</p>
-                                                            <Layers size={12} className="text-slate-300" />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-6">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Informações de Contato</label>
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
+                                                        <div className="w-9 h-9 bg-brand-gradient rounded-lg shadow-sm flex items-center justify-center text-white shrink-0">
+                                                            <Phone size={16} />
                                                         </div>
-                                                        <p className="text-xs font-bold text-slate-700">{deal.stage_name}</p>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">WhatsApp</p>
+                                                            <p className="text-xs font-bold text-slate-700">{selectedContact.phone}</p>
+                                                        </div>
                                                     </div>
-                                                ))
-                                            ) : (
-                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
-                                                    <p className="text-[10px] text-slate-400 italic">Não está em nenhum funil</p>
+                                                    <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
+                                                        <div className="w-9 h-9 bg-brand-gradient rounded-lg shadow-sm flex items-center justify-center text-white shrink-0">
+                                                            <Mail size={16} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</p>
+                                                            <p className="text-xs font-bold text-slate-700 truncate">{selectedContact.email || 'Não informado'}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Observações</label>
+                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 min-h-[60px]">
+                                                    <p className="text-xs text-slate-600 whitespace-pre-wrap">{selectedContact.notes || 'Nenhuma observação.'}</p>
+                                                </div>
+                                            </div>
+
+                                            {selectedContact.custom_fields && Object.keys(selectedContact.custom_fields).length > 0 && (
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Campos Personalizados</label>
+                                                    <div className="space-y-1">
+                                                        {Object.entries(selectedContact.custom_fields).map(([k, v]) => (
+                                                            <div key={k} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                                                <span className="text-[10px] font-bold text-slate-500 uppercase">{k}</span>
+                                                                <span className="text-xs font-medium text-slate-700">{v as string}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
+
+                                        <div className="space-y-6">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Tags do Cliente</label>
+                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-wrap gap-1.5">
+                                                    {selectedContact.tags && selectedContact.tags.length > 0 ? (
+                                                        selectedContact.tags.map(tag => (
+                                                            <span key={tag} className="px-2.5 py-1 bg-white text-blue-600 rounded-lg text-[10px] font-bold border border-blue-100 shadow-sm">
+                                                                {tag}
+                                                            </span>
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-[10px] text-slate-400 italic">Nenhuma tag atribuída</p>
+                                                    )}
+                                                    <button onClick={() => { setShowTagManager(true); setShowViewModal(false); }} className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px] font-bold hover:bg-blue-200 transition-colors">+</button>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Presença em Pipelines</label>
+                                                <div className="space-y-2">
+                                                    {selectedContact.deals && selectedContact.deals.length > 0 ? (
+                                                        selectedContact.deals.map(deal => (
+                                                            <div key={deal.id} className="p-3 bg-white rounded-xl border border-slate-100 shadow-sm border-l-4" style={{ borderLeftColor: deal.stage_color }}>
+                                                                <div className="flex items-center justify-between mb-0.5">
+                                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">{deal.pipeline_name}</p>
+                                                                    <Layers size={12} className="text-slate-300" />
+                                                                </div>
+                                                                <p className="text-xs font-bold text-slate-700">{deal.stage_name}</p>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                                                            <p className="text-[10px] text-slate-400 italic">Não está em nenhum funil</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                // --- EDIT MODE ---
+                                <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-2 gap-6 h-full content-start">
+                                    {/* Coluna Esquerda: Dados Básicos */}
+                                    <div className="space-y-5">
+                                        <div className="flex items-center gap-2 border-b border-slate-100 pb-2 mb-2">
+                                            <User size={16} className="text-slate-400" />
+                                            <h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider">Dados Pessoais</h4>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Telefone (WhatsApp)</label>
+                                                <input
+                                                    value={editFormData.phone}
+                                                    onChange={e => setEditFormData({ ...editFormData, phone: e.target.value })}
+                                                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                                />
+                                                <p className="text-[9px] text-amber-500 px-1 font-medium">⚠️ Alterar o telefone pode desconectar o histórico de mensagens.</p>
+                                            </div>
+
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">E-mail</label>
+                                                <input
+                                                    value={editFormData.email}
+                                                    onChange={e => setEditFormData({ ...editFormData, email: e.target.value })}
+                                                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                                    placeholder="email@exemplo.com"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Observações</label>
+                                                <textarea
+                                                    value={editFormData.notes}
+                                                    onChange={e => setEditFormData({ ...editFormData, notes: e.target.value })}
+                                                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none resize-none transition-all shadow-inner"
+                                                    rows={5}
+                                                    placeholder="Anotações internas sobre o contato..."
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 text-blue-700">
-                                        <h4 className="text-xs font-bold uppercase mb-1 flex items-center gap-2">
-                                            <TrendingUp size={14} />
-                                            Última Atividade
-                                        </h4>
-                                        <p className="text-sm font-bold">
-                                            {selectedContact.last_interaction ? new Date(selectedContact.last_interaction).toLocaleString() : 'Nunca interagiu'}
-                                        </p>
+                                    {/* Coluna Direita: CRM e Metadados */}
+                                    <div className="space-y-5">
+                                        <div className="flex items-center gap-2 border-b border-slate-100 pb-2 mb-2">
+                                            <Layers size={16} className="text-slate-400" />
+                                            <h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider">Classificação & CRM</h4>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            {/* Tags */}
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Tags</label>
+                                                <div className="flex flex-wrap gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200 min-h-[46px] items-center">
+                                                    {editFormData.tags && editFormData.tags.map((t: string) => (
+                                                        <span key={t} className="px-2.5 py-1 bg-white text-blue-600 rounded-lg text-[10px] font-bold border border-blue-100 flex items-center gap-1.5 shadow-sm animate-fade-in-up">
+                                                            {t}
+                                                            <button type="button" onClick={() => removeEditTag(t)} className="hover:text-red-500 text-blue-300 rounded-full hover:bg-red-50 p-0.5 transition-colors"><X size={12} /></button>
+                                                        </span>
+                                                    ))}
+                                                    <input
+                                                        className="flex-1 bg-transparent min-w-[80px] outline-none text-xs font-semibold placeholder:font-normal text-slate-700"
+                                                        placeholder="+ Tag"
+                                                        onKeyDown={handleEditTagKeyDown}
+                                                        list="tag-suggestions"
+                                                    />
+                                                    <datalist id="tag-suggestions">
+                                                        {allTagsSystem.map(t => <option key={t} value={t} />)}
+                                                    </datalist>
+                                                </div>
+                                            </div>
+
+                                            {/* Funis e Negócios */}
+                                            <div className="space-y-2">
+                                                <div className="flex flex-col gap-2 px-1">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Funis Ativos (Criar Negócio)</label>
+                                                    <div className="flex gap-2">
+                                                        <select
+                                                            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2 text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500"
+                                                            onChange={(e) => {
+                                                                const pid = e.target.value;
+                                                                setSelectedPipelineToAdd(pid);
+                                                                const p = pipelines.find(x => String(x.id) === String(pid));
+                                                                if (p && p.stages.length > 0) setSelectedStageId(p.stages[0].id);
+                                                            }}
+                                                            value={selectedPipelineToAdd}
+                                                        >
+                                                            <option value="">Selecione um Funil...</option>
+                                                            {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                        </select>
+
+                                                        {selectedPipelineToAdd && (
+                                                            <select
+                                                                className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2 text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500"
+                                                                value={selectedStageId}
+                                                                onChange={(e) => setSelectedStageId(e.target.value)}
+                                                            >
+                                                                {pipelines.find(p => String(p.id) === String(selectedPipelineToAdd))?.stages.map(s => (
+                                                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={addDealToPipeline}
+                                                            disabled={!selectedPipelineToAdd}
+                                                            className="bg-blue-600 text-white px-3 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center font-bold text-[10px]"
+                                                            title="Criar Negócio"
+                                                        >
+                                                            <Plus size={14} className="mr-1" /> Criar
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar pr-1 bg-slate-50/50 rounded-xl p-1">
+                                                    {selectedContact && selectedContact.deals && selectedContact.deals.length > 0 ? (
+                                                        selectedContact.deals.map(deal => (
+                                                            <div key={deal.id} className="p-2 bg-white border border-slate-200 rounded-lg shadow-sm flex items-center gap-3 hover:border-blue-200 transition-colors">
+                                                                <div className="w-1 h-6 rounded-full shrink-0" style={{ backgroundColor: deal.stage_color }}></div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-[10px] font-bold text-slate-700 truncate">{deal.pipeline_name}</p>
+                                                                    <p className="text-[9px] text-slate-500 truncate">{deal.title}</p>
+                                                                </div>
+                                                                <select
+                                                                    value={deal.stage_id}
+                                                                    onChange={(e) => updateDealStage(deal.id, e.target.value)}
+                                                                    className="text-[9px] bg-slate-50 border border-slate-200 rounded p-1 max-w-[90px] outline-none font-medium focus:ring-1 focus:ring-blue-500 truncate"
+                                                                >
+                                                                    {pipelines.find(p => String(p.id) === String(deal.pipeline_id))?.stages.map(s => (
+                                                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-[10px] text-slate-300 italic text-center py-4 border-2 border-dashed border-slate-100 rounded-xl">Sem negócios ativos</p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Campos Personalizados */}
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center px-1">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Campos Extras</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCustomFieldsList([...customFieldsList, { key: '', value: '' }])}
+                                                        className="text-[10px] font-bold text-blue-600 hover:bg-blue-50 px-2 py-0.5 rounded transition-colors"
+                                                    >
+                                                        + Campo
+                                                    </button>
+                                                </div>
+                                                <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar pr-1">
+                                                    {customFieldsList.map((field, idx) => (
+                                                        <div key={idx} className="flex gap-1.5 items-center animate-fade-in group">
+                                                            <input
+                                                                placeholder="Nome"
+                                                                value={field.key}
+                                                                onChange={e => {
+                                                                    const list = [...customFieldsList];
+                                                                    list[idx].key = e.target.value;
+                                                                    setCustomFieldsList(list);
+                                                                }}
+                                                                className="flex-1 min-w-0 bg-slate-50 border border-slate-200 p-2 rounded-lg text-[10px] font-bold focus:ring-1 focus:ring-blue-500 outline-none uppercase placeholder:normal-case"
+                                                            />
+                                                            <input
+                                                                placeholder="Valor"
+                                                                value={field.value}
+                                                                onChange={e => {
+                                                                    const list = [...customFieldsList];
+                                                                    list[idx].value = e.target.value;
+                                                                    setCustomFieldsList(list);
+                                                                }}
+                                                                className="flex-[2] min-w-0 bg-slate-50 border border-slate-200 p-2 rounded-lg text-[10px] font-medium focus:ring-1 focus:ring-blue-500 outline-none"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const list = customFieldsList.filter((_, i) => i !== idx);
+                                                                    setCustomFieldsList(list);
+                                                                }}
+                                                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    {customFieldsList.length === 0 && (
+                                                        <p className="text-[10px] text-slate-300 italic text-center py-2">Nenhum campo extra.</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
+
+                        {/* Footer do Modal with Actions */}
+                        {isEditing && (
+                            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 shrink-0">
+                                <button
+                                    onClick={() => setIsEditing(false)}
+                                    className="px-4 py-2 text-slate-500 font-bold text-xs hover:bg-slate-200/50 rounded-xl transition-colors"
+                                    disabled={isSavingContact}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleSaveEdit}
+                                    disabled={isSavingContact}
+                                    className="px-6 py-2 bg-brand-gradient text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-500/20 hover:contrast-125 active:scale-95 transition-all flex items-center gap-2"
+                                >
+                                    {isSavingContact ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <CheckCircle2 size={16} />}
+                                    Salvar Alterações
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -985,6 +1409,100 @@ const ContactsPage: React.FC<ContactsPageProps> = ({ onNavigateToChat }) => {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* Modal de Novo Contato */}
+            {showAddModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-fade-in shadow-2xl">
+                    <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+                        <div className="modal-header-gradient">
+                            <div className="flex items-center gap-3">
+                                <User className="text-white" size={20} />
+                                <div>
+                                    <h2 className="text-lg font-bold">Novo Contato</h2>
+                                    <p className="text-[10px] text-white/80 font-medium">Adicionar manualmente</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleAddContact} className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nome</label>
+                                    <input required value={newContact.name} onChange={e => setNewContact({ ...newContact, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500" placeholder="Nome Completo" />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Telefone</label>
+                                    <input required value={newContact.phone} onChange={e => setNewContact({ ...newContact, phone: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500" placeholder="5511999998888" />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Email (Opcional)</label>
+                                <input type="email" value={newContact.email} onChange={e => setNewContact({ ...newContact, email: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500" placeholder="email@exemplo.com" />
+                            </div>
+
+                            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Tags (Enter para adicionar)</label>
+                                <div className="flex flex-wrap gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200 min-h-[42px] content-center">
+                                    {newContact.tags && newContact.tags.map(t => (
+                                        <span key={t} className="px-2 py-1 bg-white text-blue-600 rounded-lg text-[10px] font-bold border border-blue-100 flex items-center gap-1 shadow-sm">
+                                            {t}
+                                            <button type="button" onClick={() => removeNewTag(t)} className="hover:text-red-500 rounded-full hover:bg-red-50 p-0.5"><X size={10} /></button>
+                                        </span>
+                                    ))}
+                                    <input
+                                        className="flex-1 bg-transparent min-w-[100px] outline-none text-xs font-semibold placeholder:font-normal"
+                                        placeholder="Nova tag..."
+                                        onKeyDown={handleNewTagKeyDown}
+                                        list="tag-suggestions-new"
+                                    />
+                                    <datalist id="tag-suggestions-new">
+                                        {allTagsSystem.map(t => <option key={t} value={t} />)}
+                                    </datalist>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Criar Negócio (Opcional)</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <select
+                                        value={newContact.pipeline_id || ''}
+                                        onChange={e => {
+                                            const pid = e.target.value;
+                                            const pipe = pipelines.find(p => String(p.id) === String(pid));
+                                            setNewContact({ ...newContact, pipeline_id: pid, stage_id: pipe && pipe.stages.length > 0 ? pipe.stages[0].id : '' });
+                                        }}
+                                        className="bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500"
+                                    >
+                                        <option value="">Selecione Funil...</option>
+                                        {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                    <select
+                                        value={newContact.stage_id || ''}
+                                        onChange={e => setNewContact({ ...newContact, stage_id: e.target.value })}
+                                        disabled={!newContact.pipeline_id}
+                                        className="bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                                    >
+                                        <option value="">Selecione Etapa...</option>
+                                        {pipelines.find(p => String(p.id) === String(newContact.pipeline_id))?.stages.map(s => (
+                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="pt-2 flex justify-end gap-2">
+                                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-slate-500 font-bold text-xs hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+                                <button type="submit" disabled={isSavingContact} className="btn-primary px-6 py-2">
+                                    {isSavingContact ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <CheckCircle2 size={16} />}
+                                    Salvar Contato
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
