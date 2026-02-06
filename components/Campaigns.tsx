@@ -291,17 +291,16 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
         const newRecipients = contacts.map((c: any) => ({
           name: c.name,
           phone: c.phone,
+          email: c.email,
           variables: [c.name] // Default to name as first variable
         }));
 
         // Merging without duplicates
-        setRecipientsData(prev => {
-          const existingPhones = new Set(prev.map(p => p.phone));
-          const filteredNew = newRecipients.filter((r: any) => !existingPhones.has(r.phone));
-          return [...prev, ...filteredNew];
-        });
+        const existingPhones = new Set(recipientsData.map((p: any) => p.phone));
+        const filteredNew = newRecipients.filter((r: any) => !existingPhones.has(r.phone));
+        setRecipientsData([...recipientsData, ...filteredNew]);
 
-        onShowSuccess(`${newRecipients.length} contatos encontrados com a tag "${selectedTag}".`);
+        onShowSuccess(`${filteredNew.length} novos contatos (de ${newRecipients.length} encontrados) com a tag "${selectedTag}".`);
       }
     } catch (err) {
       console.error('Erro ao buscar contatos por tag:', err);
@@ -423,6 +422,12 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
           if (map.type === 'column') return row[map.value] || '';
           if (map.type === 'custom') return map.value;
           if (map.type === 'contact_name') return row['name'] || row['nome'] || '';
+          if (map.type === 'contact_var') {
+            if (map.value === 'name') return row['name'] || row['nome'] || '';
+            if (map.value === 'phone') return safePhone;
+            if (map.value === 'email') return row['email'] || row['e-mail'] || '';
+            return '';
+          }
           if (map.type === 'system_var') {
             const found = companyVars.find(cv => cv.k === map.value);
             return found ? (found.v || '') : '';
@@ -446,6 +451,12 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
           const map = varMapping[v];
           if (map?.type === 'custom' && map.value) return map.value;
           if (map?.type === 'contact_name') return r.name || '';
+          if (map?.type === 'contact_var') {
+            if (map.value === 'name') return r.name || '';
+            if (map.value === 'phone') return r.phone || '';
+            if (map.value === 'email') return r.email || '';
+            return '';
+          }
           if (map?.type === 'system_var') {
             const found = companyVars.find(cv => cv.k === map.value);
             return found ? (found.v || '') : '';
@@ -868,8 +879,9 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                           >
                             <option value="custom">Texto Fixo</option>
                             <option value="column">Coluna CSV</option>
-                            <option value="contact_name">Nome do Contato</option>
-                            <option value="system_var" className="font-bold text-indigo-600">Variável Global</option>
+                            {/* <option value="contact_name">Nome do Contato</option> Removed to simplify interface */}
+                            <option value="contact_var" className="font-bold text-emerald-600">Dado do Contato</option>
+                            <option value="system_var" className="font-bold text-indigo-600">Variável da Empresa</option>
                           </select>
 
                           <div className="relative">
@@ -886,6 +898,17 @@ const CreateCampaignWizard = ({ onClose, channels, templates, onSuccess, onShowS
                               ) : <div className="text-[10px] text-red-400 italic p-2 bg-red-50 rounded-lg">Sem CSV carregado</div>
                             ) : varMapping[v]?.type === 'contact_name' ? (
                               <div className="text-[10px] text-slate-400 italic p-2 bg-slate-50 rounded-lg flex items-center gap-1"><User size={10} /> Nome do Contato</div>
+                            ) : varMapping[v]?.type === 'contact_var' ? (
+                              <select
+                                value={varMapping[v]?.value}
+                                onChange={e => setVarMapping({ ...varMapping, [v]: { ...varMapping[v], value: e.target.value } })}
+                                className="w-full bg-slate-50 border-none text-[11px] text-slate-700 p-2 rounded-lg focus:ring-0 outline-none cursor-pointer hover:bg-slate-100 transition-colors font-medium"
+                              >
+                                <option value="">Selecione o Campo...</option>
+                                <option value="name">Nome (Cadastrado)</option>
+                                <option value="phone">Telefone (WhatsApp)</option>
+                                <option value="email">Email (Se houver)</option>
+                              </select>
                             ) : varMapping[v]?.type === 'system_var' ? (
                               <select
                                 value={varMapping[v]?.value}
