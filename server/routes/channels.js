@@ -21,12 +21,27 @@ router.get('/', async (req, res) => {
 });
 
 // Listar TODOS os templates do Tenant
+// Listar TODOS os templates do Tenant (com filtro opcional por canal via accountId)
 router.get('/templates/all', async (req, res) => {
     try {
-        const result = await db.query(
-            "SELECT * FROM whatsapp_templates WHERE tenant_id = $1 ORDER BY name ASC",
-            [req.tenantId]
-        );
+        const { accountId } = req.query;
+        let query = "SELECT * FROM whatsapp_templates WHERE tenant_id = $1";
+        let params = [req.tenantId];
+
+        if (accountId) {
+            // 1. Descobrir o WABA ID da conta
+            const accRes = await db.query("SELECT waba_id FROM whatsapp_accounts WHERE id = $1 AND tenant_id = $2", [accountId, req.tenantId]);
+            if (accRes.rows.length > 0) {
+                const wabaId = accRes.rows[0].waba_id;
+                // 2. Filtrar templates pelo WABA (Várias contas podem compartilhar o mesmo WABA)
+                query += " AND waba_id = $2";
+                params.push(wabaId);
+            }
+        }
+
+        query += " ORDER BY name ASC";
+
+        const result = await db.query(query, params);
         res.json(result.rows);
     } catch (err) {
         console.error(err);

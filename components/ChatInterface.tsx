@@ -172,6 +172,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [templates, setTemplates] = useState<any[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [templateSearch, setTemplateSearch] = useState('');
+  const [activeTemplate, setActiveTemplate] = useState<any | null>(null);
+  const [pendingTemplateObj, setPendingTemplateObj] = useState<any | null>(null);
 
   // Variable Filling System
   const [companyVariables, setCompanyVariables] = useState<any[]>([]);
@@ -208,7 +210,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     setIsLoadingTemplates(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/channels/templates/all', {
+      // Prioritize active chat channel, then selected filter. If 'all', don't filter.
+      let channelId = currentChatChannel;
+      if (!channelId && selectedChannel && selectedChannel !== 'all') {
+        channelId = selectedChannel;
+      }
+
+      const query = channelId ? `?accountId=${channelId}` : '';
+
+      const res = await fetch(`/api/channels/templates/all${query}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -226,7 +236,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     } finally {
       setIsLoadingTemplates(false);
     }
-  }, []);
+  }, [currentChatChannel, selectedChannel]);
 
   useEffect(() => {
     if (showTemplateModal) {
@@ -239,41 +249,94 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     const bodyComponent = template.components?.find((c: any) => c.type === 'BODY');
     let text = bodyComponent?.text || '';
 
-    // Auto-preencher {{1}} com nome do contato
-    if (text && activeContactId) {
-      const activeContact = contacts.find(c => String(c.id) === String(activeContactId));
-      if (activeContact && activeContact.name) {
-        text = text.replace(/\{\{1\}\}/g, activeContact.name);
-      }
-    }
-
-    // Check remaining variables {{2}}, {{3}}...
+    // Find ALL variables {{1}}, {{2}}...
     const remainingVars = text.match(/\{\{\d+\}\}/g);
     const uniqueVars = remainingVars ? Array.from(new Set(remainingVars)) : [];
 
+    // Identify Contact Name for {{1}}
+    let contactName = '';
+    if (activeContactId) {
+      const activeContact = contacts.find(c => String(c.id) === String(activeContactId));
+      if (activeContact) contactName = activeContact.name || activeContact.phone;
+    }
+
     if (uniqueVars.length > 0) {
+      // Pre-fill {{1}}
+      const initialValues: Record<string, string> = {};
+      if (uniqueVars.includes('{{1}}') && contactName) {
+        initialValues['{{1}}'] = contactName;
+      }
+
       // Open Variable Fill Modal
       setPendingTemplateText(text);
       setPendingVariables(uniqueVars);
-      setVariableValues({});
+      setPendingTemplateObj(template); // Store for later
+      setVariableValues(initialValues); // Set pre-filled values
       setShowVariableFillModal(true);
     } else {
-      // No more vars, insert directly
-      if (text) setInputText(text);
-      else setInputText(`Template: ${template.name}`);
-    }
+      // No vars, use directly
+      setInputText(text || `Template: ${template.name}`);
 
-    setShowTemplateModal(false);
+      // Set Active Template (No params)
+      const langCode = typeof template.language === 'string' ? template.language : (template.language?.code || 'pt_BR');
+      setActiveTemplate({
+        name: template.name,
+        language: { code: langCode },
+        components: []
+      });
+      setShowTemplateModal(false);
+    }
   };
 
   const finalizeTemplate = () => {
     let finalText = pendingTemplateText;
-    pendingVariables.forEach(v => {
+    const params: any[] = [];
+
+    // Sort variables numerically {{1}}, {{2}} to ensure correct param order for Meta
+    const sortedVars = [...pendingVariables].sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      return numA - numB;
+    });
+
+    sortedVars.forEach(v => {
       const val = variableValues[v] || '';
-      // Replace ALL occurrences
+      // Replace ALL occurrences in text (Visual Preview)
+      // Note: We use split/join on the ORIGINAL text (pendingTemplateText) ? 
+      // No, we need to iterate globally or chained.
+      // Better: Iterate sortedVars for params, but for text replacement order doesn't matter much 
+      // UNLESS vars are nested (unlikely).
+
+      // Add to params
+      params.push({
+        type: 'text',
+        text: val
+      });
+    });
+
+    // Generate Visual Text
+    sortedVars.forEach(v => {
+      const val = variableValues[v] || '';
       finalText = finalText.split(v).join(val);
     });
+
     setInputText(finalText);
+
+    if (pendingTemplateObj) {
+      const langCode = typeof pendingTemplateObj.language === 'string' ? pendingTemplateObj.language : (pendingTemplateObj.language?.code || 'pt_BR');
+      setActiveTemplate({
+        name: pendingTemplateObj.name,
+        language: { code: langCode },
+        components: [
+          {
+            type: 'body',
+            parameters: params
+          }
+        ]
+      });
+    }
+
+    setPendingTemplateObj(null);
     setShowVariableFillModal(false);
   };
 
@@ -502,15 +565,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
     const token = localStorage.getItem('token');
     try {
+      const payload: any = {
+        channelId: currentChatChannel // Send manual selection
+      };
+
+      if (activeTemplate) {
+        payload.type = 'template';
+        payload.template = {
+          name: activeTemplate.name,
+          language: activeTemplate.language,
+          components: activeTemplate.components
+        };
+        // Content is ignored by backend logic usually, or we send inputText as fallback?
+        // Let's not send 'content' key if it's template to be safe, OR send it for logging.
+        payload.content = inputText;
+      } else {
+        payload.type = 'text';
+        payload.content = content;
+      }
+
       await fetch(`http://localhost:3001/api/chat/${activeContactId}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          type: 'text',
-          content,
-          channelId: currentChatChannel // Send manual selection
-        })
+        body: JSON.stringify(payload)
       });
+
+      setActiveTemplate(null); // Clear after send
       fetchMessages(activeContactId);
       fetchChats();
     } catch (err) { console.error(err); }
@@ -1675,8 +1755,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                 </button>
 
                 <div className="flex-1 py-2 md:py-3 px-2">
+                  {activeTemplate && (
+                    <div className="flex items-center gap-2 mb-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-lg px-3 py-2 w-full md:w-fit animate-fade-in-up shadow-sm">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                        <LayoutTemplate size={14} className="text-blue-600" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider leading-none mb-0.5">Template Ativo</span>
+                        <span className="text-xs font-bold text-blue-700 truncate block">{activeTemplate.name}</span>
+                      </div>
+                      <button
+                        onClick={() => { setActiveTemplate(null); setInputText(''); }}
+                        className="ml-auto md:ml-2 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Cancelar Template"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
                   <textarea
                     value={inputText}
+                    readOnly={!!activeTemplate}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
@@ -1684,8 +1783,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         handleSendMessage();
                       }
                     }}
-                    placeholder="Digite..."
-                    className="w-full bg-transparent border-none outline-none text-sm text-slate-800 placeholder:text-slate-400 resize-none max-h-32 scrollbar-hide"
+                    placeholder={activeTemplate ? "Template selecionado (pronto para enviar)" : "Digite..."}
+                    className={`w-full bg-transparent border-none outline-none text-sm resize-none max-h-32 scrollbar-hide ${activeTemplate ? 'text-slate-500 italic cursor-not-allowed' : 'text-slate-800'}`}
                     rows={1}
                     style={{ minHeight: '24px' }}
                   />

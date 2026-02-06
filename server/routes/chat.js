@@ -219,9 +219,9 @@ router.post('/:contactId/read', async (req, res) => {
 // 3. Enviar Mensagem (Texto) - COM STICKY CHANNEL
 router.post('/:contactId/send', async (req, res) => {
     const { contactId } = req.params;
-    const { type, content, channelId } = req.body;
+    const { type, content, channelId, template } = req.body;
 
-    if (!content) return res.status(400).json({ error: 'Conteúdo vazio.' });
+    if (!content && type !== 'template') return res.status(400).json({ error: 'Conteúdo vazio.' });
 
     try {
         const tenantId = req.tenantId || (req.user && req.user.tenantId);
@@ -282,13 +282,49 @@ router.post('/:contactId/send', async (req, res) => {
 
         // Enviar para Meta API
         const url = `https://graph.facebook.com/v19.0/${channel.phone_number_id}/messages`;
-        const payload = {
+
+        let payload = {
             messaging_product: "whatsapp",
             recipient_type: "individual",
-            to: contactPhone,
-            type: "text",
-            text: { body: content }
+            to: contactPhone
         };
+
+        const msgType = type || 'text';
+
+        // Separação limpa dos tipos de payload
+        switch (msgType) {
+            case 'template':
+                if (!template || !template.name) {
+                    return res.status(400).json({ error: 'Dados do template incompletos.' });
+                }
+                payload.type = "template";
+                payload.template = template;
+                break;
+
+            case 'image':
+                payload.type = "image";
+                payload.image = { link: content }; // content assume URL
+                break;
+
+            case 'document':
+                payload.type = "document";
+                payload.document = { link: content };
+                break;
+
+            case 'audio':
+                payload.type = "audio";
+                payload.audio = { link: content };
+                break;
+
+            case 'text':
+            default:
+                if (!content) return res.status(400).json({ error: 'Conteúdo de texto vazio.' });
+                payload.type = "text";
+                payload.text = { body: content };
+                break;
+        }
+
+        console.log('📤 [META PAYLOAD]', JSON.stringify(payload, null, 2));
 
         const metaRes = await axios.post(url, payload, {
             headers: {
@@ -300,15 +336,19 @@ router.post('/:contactId/send', async (req, res) => {
         const wamid = metaRes.data.messages[0].id;
 
         // Salvar no Banco (OUTBOUND em UTC)
-        // CRITICAL: Use UTC explicitly to avoid timezone issues
         const timestamp = new Date();
+
+        // Define conteúdo visual para log
+        let messageLogContent = content;
+        if (msgType === 'template') messageLogContent = `Template: ${template.name}`;
+        else if (['image', 'document', 'audio'].includes(msgType)) messageLogContent = `[Mídia: ${msgType}] ${content}`;
 
         const insert = await db.query(
             `INSERT INTO chat_logs 
             (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, direction, status, channel, timestamp, created_at) 
-            VALUES ($1, $2, $3, $4, $5, 'text', 'OUTBOUND', 'sent', 'WhatsApp Business', $6::timestamptz, $6::timestamptz)
+            VALUES ($1, $2, $3, $4, $5, $7, 'OUTBOUND', 'sent', 'WhatsApp Business', $6::timestamptz, $6::timestamptz)
             RETURNING *`,
-            [tenantId, contactId, channel.id, wamid, content, timestamp.toISOString()]
+            [tenantId, contactId, channel.id, wamid, messageLogContent, timestamp.toISOString(), msgType]
         );
 
         // Emitir Socket

@@ -14,6 +14,12 @@ const pool = new Pool({
     ssl: false
 });
 
+// Listener para erros em clientes ociosos (evita crash do Node)
+pool.on('error', (err, client) => {
+    console.error('⚠️ [DB POOL] Erro inesperado no cliente ocioso:', err.message);
+    // Não encerramos o processo, apenas logamos
+});
+
 module.exports = {
     query: (text, params) => pool.query(text, params),
     pool // Exportando o pool também para permitir transactions
