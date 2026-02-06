@@ -201,7 +201,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     fetch('/api/settings/company', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
-        if (data.custom_variables) setCompanyVariables(data.custom_variables);
+        if (data) setCompanyVariables(data);
       })
       .catch(e => console.error('Error fetching defaults', e));
   }, []);
@@ -2489,19 +2489,68 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
                       autoFocus={idx === 0}
                     />
-                    {/* Sugestões Globais */}
-                    {companyVariables.length > 0 && (
-                      <div className="flex flex-wrap gap-2 px-1">
-                        {companyVariables.map(cv => (
+                    {/* Variáveis Personalizadas */}
+                    {companyVariables && Array.isArray(companyVariables.custom_variables) && companyVariables.custom_variables.length > 0 && (
+                      <div className="flex flex-wrap gap-2 px-1 mt-1">
+                        <span className="text-[9px] font-bold text-slate-300 w-full uppercase">Personalizadas</span>
+                        {companyVariables.custom_variables.map((cv: any) => (
                           <button
                             key={cv.key}
                             onClick={() => setVariableValues(prev => ({ ...prev, [v]: cv.value }))}
-                            className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold hover:bg-indigo-100 transition-colors"
+                            className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold hover:bg-indigo-100 transition-colors border border-indigo-100"
                             title={cv.value}
                           >
                             {cv.key.replace(/_/g, ' ')}
                           </button>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Variáveis de Sistema */}
+                    {companyVariables && (
+                      <div className="flex flex-wrap gap-2 px-1 mt-2 border-t border-slate-100 pt-1">
+                        <span className="text-[9px] font-bold text-slate-300 w-full uppercase">Dados da Empresa</span>
+                        {[
+                          { l: 'Nome', v: companyVariables.company_name },
+                          { l: 'CNPJ', v: companyVariables.cnpj },
+                          { l: 'Telefone', v: companyVariables.contact_phone },
+                          { l: 'Email', v: companyVariables.contact_email },
+                          { l: 'PIX', v: companyVariables.pix_key },
+                        ].filter(i => i.v).map((item) => (
+                          <button
+                            key={item.l}
+                            onClick={() => setVariableValues(prev => ({ ...prev, [v]: String(item.v) }))}
+                            className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-[10px] font-bold hover:bg-slate-200 transition-colors"
+                            title={String(item.v)}
+                          >
+                            {item.l}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Sugestões do Contato */}
+                    {activeContactId && contacts.find(c => String(c.id) === String(activeContactId))?.custom_fields && (
+                      <div className="flex flex-wrap gap-2 px-1 mt-1 border-t border-slate-100 pt-1">
+                        <span className="text-[9px] font-bold text-slate-300 w-full uppercase">Do Contato</span>
+                        {Object.entries(contacts.find(c => String(c.id) === String(activeContactId))?.custom_fields || {}).map(([key, value]) => (
+                          <button
+                            key={key}
+                            onClick={() => setVariableValues(prev => ({ ...prev, [v]: String(value) }))}
+                            className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold hover:bg-emerald-100 transition-colors"
+                            title={String(value)}
+                          >
+                            {key.replace(/_/g, ' ')}
+                          </button>
+                        ))}
+                        {contacts.find(c => String(c.id) === String(activeContactId))?.name && (
+                          <button
+                            onClick={() => setVariableValues(prev => ({ ...prev, [v]: contacts.find(c => String(c.id) === String(activeContactId))?.name || '' }))}
+                            className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold hover:bg-emerald-100 transition-colors"
+                          >
+                            Nome
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
