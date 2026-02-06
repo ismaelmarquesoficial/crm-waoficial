@@ -340,7 +340,10 @@ router.post('/:contactId/send', async (req, res) => {
 
         // Define conteúdo visual para log
         let messageLogContent = content;
-        if (msgType === 'template') messageLogContent = `Template: ${template.name}`;
+        if (msgType === 'template') {
+            // Se veio conteúdo visual do frontend (preview preenchido), usa ele. Senão, usa o nome.
+            messageLogContent = content && content.trim() !== '' ? content : `Template: ${template.name}`;
+        }
         else if (['image', 'document', 'audio'].includes(msgType)) messageLogContent = `[Mídia: ${msgType}] ${content}`;
 
         const insert = await db.query(
