@@ -426,8 +426,10 @@ router.post('/:contactId/send', async (req, res) => {
         // Define conteúdo visual para log
         let messageLogContent = content;
         if (msgType === 'template') {
-            // Se veio conteúdo visual do frontend (preview preenchido), usa ele. Senão, usa o nome.
-            messageLogContent = content && content.trim() !== '' ? content : `Template: ${template.name}`;
+            // Save full template content as JSON (User request: "salvar todo o template sem filtrar")
+            // Use snapshot from frontend if available (contains full text), otherwise fallback to payload
+            const templateToSave = req.body.template_snapshot || req.body.template;
+            messageLogContent = JSON.stringify(templateToSave);
         }
         else if (['image', 'video', 'document', 'audio', 'sticker'].includes(msgType)) {
             const caption = req.body.caption ? ` - ${req.body.caption}` : '';

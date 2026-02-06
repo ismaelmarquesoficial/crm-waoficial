@@ -3,7 +3,9 @@ export enum MessageType {
   IMAGE = 'image',
   AUDIO = 'audio',
   VIDEO = 'video',
-  DOCUMENT = 'document'
+  DOCUMENT = 'document',
+  TEMPLATE = 'template',
+  INTERACTIVE = 'interactive'
 }
 
 export interface Contact {

@@ -179,6 +179,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   const [activeTemplate, setActiveTemplate] = useState<any | null>(null);
   const [pendingTemplateObj, setPendingTemplateObj] = useState<any | null>(null);
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-focus textarea when template is selected
+  useEffect(() => {
+    if (activeTemplate && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [activeTemplate]);
+
   // Variable Filling System
   const [companyVariables, setCompanyVariables] = useState<any[]>([]);
   const [showVariableFillModal, setShowVariableFillModal] = useState(false);
@@ -292,7 +301,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       setActiveTemplate({
         name: template.name,
         language: { code: langCode },
-        components: []
+        components: [],
+        rawComponents: template.components // Preserve original components for snapshot
       });
     }
 
@@ -344,7 +354,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
             type: 'body',
             parameters: params
           }
-        ]
+        ],
+        rawComponents: pendingTemplateObj.components // Preserve original for snapshot
       });
     }
 
@@ -518,7 +529,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
           id: m.id,
           contactId: m.contact_id,
           sender: m.direction === 'INBOUND' ? 'contact' : 'user',
-          type: (m.type === 'template' ? 'text' : (m.type || 'text')) as MessageType,
+          type: (m.type || 'text') as MessageType,
           content: (['image', 'audio', 'video', 'document'].includes(m.type) && m.media_url) ? m.media_url : m.message,
           timestamp: localTime,
           status: m.status || 'read',
@@ -602,7 +613,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
   );
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !activeContactId) return;
+    // Agora permite enviar se tiver texto OU se tiver um template ativo
+    if ((!inputText.trim() && !activeTemplate) || !activeContactId) return;
     const content = inputText;
     setInputText('');
 
@@ -619,6 +631,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
           language: activeTemplate.language,
           components: activeTemplate.components
         };
+        // Send FULL snapshot using preserved rawComponents (with text) + name/lang. 
+        // We override 'components' in the snapshot with the raw ones containing text.
+        payload.template_snapshot = {
+          ...activeTemplate,
+          components: activeTemplate.rawComponents || activeTemplate.components
+        };
+
         // Content is ignored by backend logic usually, or we send inputText as fallback?
         // Let's not send 'content' key if it's template to be safe, OR send it for logging.
         payload.content = inputText;
@@ -1816,8 +1835,93 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       }`}>
                       {msg.type === MessageType.TEXT && <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
 
+                      {/* Template Messages */}
+                      {/* Template Messages */}
+                      {msg.type === MessageType.TEMPLATE && (() => {
+                        try {
+                          const data = JSON.parse(msg.content);
+
+                          // 1. Structure "Interactive-like" (Backwards compatibility or if backend normalizes someday)
+                          if (data.body && data.body.text && !data.components) {
+                            return (
+                              <div className="flex flex-col gap-1.5 min-w-[200px]">
+                                <div className="flex items-center gap-2 mb-1 border-b border-black/5 pb-1">
+                                  <LayoutTemplate size={12} className={msg.sender === 'user' ? 'text-white/80' : 'text-slate-400'} />
+                                  <span className={`text-[10px] uppercase font-bold tracking-wider ${msg.sender === 'user' ? 'text-white/80' : 'text-slate-400'}`}>Template</span>
+                                </div>
+
+                                {data.header?.text && <p className="font-bold text-sm mb-1">{data.header.text}</p>}
+                                <p className="whitespace-pre-wrap leading-relaxed">{data.body.text}</p>
+                                {data.footer?.text && <p className="text-[10px] opacity-70 mt-1">{data.footer.text}</p>}
+
+                                {data.action?.buttons && (
+                                  <div className="mt-2 space-y-1.5">
+                                    {data.action.buttons.map((b: any, i: number) => (
+                                      <div key={i} className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm transition-all ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
+                                        {b.reply?.title || 'Botão'}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          // 2. Raw Template Structure (Standard WhatsApp API format)
+                          // We need to Hydrate the text (replace {{1}} with params)
+                          return (
+                            <div className="flex flex-col gap-1.5 min-w-[200px]">
+                              <div className="flex items-center gap-2 mb-1 border-b border-black/5 pb-1">
+                                <LayoutTemplate size={12} className={msg.sender === 'user' ? 'text-white/80' : 'text-slate-400'} />
+                                <span className={`text-[10px] uppercase font-bold tracking-wider ${msg.sender === 'user' ? 'text-white/80' : 'text-slate-400'}`}>Template</span>
+                              </div>
+
+                              <p className="font-bold text-sm">{data.name}</p>
+
+                              {data.components && data.components.length > 0 && (
+                                <div className="space-y-2 mt-1">
+                                  {data.components.map((comp: any, i: number) => {
+                                    if (comp.type === 'body') {
+                                      // Attempt to hydrate parameters
+                                      let text = comp.text || '';
+                                      if (comp.parameters && text) {
+                                        comp.parameters.forEach((param: any, idx: number) => {
+                                          text = text.replace(`{{${idx + 1}}}`, param.text || '');
+                                        });
+                                      }
+
+                                      // If no text but params exist (e.g. sending-only payload), show params
+                                      if (!text && comp.parameters) {
+                                        return (
+                                          <div key={i} className="text-sm leading-relaxed whitespace-pre-wrap italic opacity-80">
+                                            {comp.parameters.map((p: any) => p.text).join(' ')}
+                                          </div>
+                                        )
+                                      }
+
+                                      return <p key={i} className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>;
+                                    }
+                                    if (comp.type === 'button') {
+                                      return (
+                                        <div key={i} className={`px-2 py-1.5 rounded-lg text-center text-xs font-bold border ${msg.sender === 'user' ? 'bg-white/20 border-white/20' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                                          {comp.text || comp.parameters?.[0]?.text || 'Botão'}
+                                        </div>
+                                      )
+                                    }
+                                    return null;
+                                  })}
+                                </div>
+                              )}
+                              <p className="text-[9px] opacity-60 mt-1 italic">Idioma: {data.language?.code}</p>
+                            </div>
+                          );
+                        } catch (e) {
+                          return <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>;
+                        }
+                      })()}
+
                       {/* Interactive Messages (Buttons / Lists) */}
-                      {(msg.type as any) === 'interactive' && (() => {
+                      {msg.type === MessageType.INTERACTIVE && (() => {
                         try {
                           const data = JSON.parse(msg.content);
                           return (
@@ -1952,6 +2056,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                     </div>
                   )}
                   <textarea
+                    ref={textareaRef}
                     value={inputText}
                     readOnly={!!activeTemplate}
                     onChange={(e) => handleInputChange(e.target.value)}
@@ -2027,7 +2132,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                   )}
                 </div>
 
-                {inputText.trim() ? (
+                {inputText.trim() || activeTemplate ? (
                   <button
                     onClick={handleSendMessage}
                     className="p-3 bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-full hover:shadow-lg hover:opacity-90 transition-all transform hover:scale-105 active:scale-95 m-1"
