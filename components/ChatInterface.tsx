@@ -60,6 +60,20 @@ style.innerHTML = `
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes zoomIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out forwards;
+  }
+  .animate-zoom-in {
+    animation: zoomIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
   .animate-message {
     animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
@@ -232,6 +246,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
   // Interactive Modal State
   const [showInteractiveModal, setShowInteractiveModal] = useState(false);
+
+  // Intelligent Image Preview State
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [showImagePreview, setShowImagePreview] = useState(false);
 
   // Audio Recording Hook
   const {
@@ -2068,13 +2086,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       )}
 
                       {msg.type === MessageType.IMAGE && (
-                        <div className={`mb-0 rounded-[15px] overflow-hidden shadow-sm ${isUser ? 'border-none' : 'border border-slate-100'} hover:shadow-md transition-all cursor-pointer group relative max-w-[260px] md:max-w-[320px]`}>
+                        <div
+                          onClick={() => {
+                            setPreviewImage(msg.content.startsWith('http') ? msg.content : `http://localhost:3001${msg.content}`);
+                            setShowImagePreview(true);
+                          }}
+                          className={`mb-0 rounded-[15px] overflow-hidden shadow-sm ${isUser ? 'border-none' : 'border border-slate-100'} hover:shadow-md transition-all cursor-zoom-in group relative max-w-[260px] md:max-w-[320px]`}
+                        >
                           <img
                             src={msg.content.startsWith('http') ? msg.content : `http://localhost:3001${msg.content}`}
                             alt="Attachment"
                             className="w-full h-auto object-cover max-h-[400px] transform group-hover:scale-[1.03] transition-transform duration-500"
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <div className="bg-white/20 backdrop-blur-md p-2 rounded-full transform scale-0 group-hover:scale-100 transition-transform duration-300">
+                              <Search size={20} className="text-white" />
+                            </div>
+                          </div>
                         </div>
                       )}
 
@@ -3388,6 +3416,45 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
           </div>
         )
       }
+
+      {/* Modal de Visualização Inteligente de Imagem (Lightbox) */}
+      {showImagePreview && previewImage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-md animate-fade-in p-4 md:p-10"
+          onClick={() => setShowImagePreview(false)}
+        >
+          <div className="absolute top-6 right-6 z-10 flex gap-4">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(previewImage, '_blank');
+              }}
+              className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md border border-white/10"
+              title="Abrir original"
+            >
+              <Globe size={20} />
+            </button>
+            <button
+              onClick={() => setShowImagePreview(false)}
+              className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md border border-white/10"
+              title="Fechar"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div
+            className="relative max-w-5xl w-full h-full flex items-center justify-center animate-zoom-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={previewImage}
+              alt="Preview"
+              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border border-white/5"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Interactive Modal */}
       <InteractiveMessageModal
