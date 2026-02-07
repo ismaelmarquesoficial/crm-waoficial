@@ -4,7 +4,7 @@ const FormData = require('form-data');
 
 /**
  * Cliente centralizado para comunicação direta com a API do WhatsApp (Meta)
- * Este é o motor que executa as requisições HTTP da plataforma Oficial.
+ * Versão da API: v21.0
  */
 const Client = {
     /**
@@ -13,11 +13,11 @@ const Client = {
     uploadMedia: async (phoneNumberId, token, filePath, mimeType) => {
         const formData = new FormData();
         formData.append('file', fs.createReadStream(filePath));
-        formData.append('type', mimeType);
+        formData.append('type', 'audio/ogg; codecs=opus'); // Formato recomendado no guia
         formData.append('messaging_product', 'whatsapp');
 
         const response = await axios.post(
-            `https://graph.facebook.com/v19.0/${phoneNumberId}/media`,
+            `https://graph.facebook.com/v21.0/${phoneNumberId}/media`,
             formData,
             {
                 headers: {
@@ -33,7 +33,7 @@ const Client = {
      * Envia uma mensagem seguindo o formato JSON específico da API Oficial
      */
     sendMessage: async (phoneNumberId, token, payload) => {
-        const url = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
+        const url = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
         const response = await axios.post(url, payload, {
             headers: {
                 Authorization: `Bearer ${token}`,
@@ -47,7 +47,7 @@ const Client = {
      * Obtém a URL temporária para download de uma mídia
      */
     getMediaUrl: async (mediaId, token) => {
-        const response = await axios.get(`https://graph.facebook.com/v19.0/${mediaId}`, {
+        const response = await axios.get(`https://graph.facebook.com/v21.0/${mediaId}`, {
             headers: { Authorization: `Bearer ${token}` }
         });
         return response.data.url;

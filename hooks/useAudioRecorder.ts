@@ -1,104 +1,138 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { chatService } from '../services/chatService';
 
 interface UseAudioRecorderProps {
-    onRecordingComplete?: () => void;
+    contactId?: string;
+    channelId?: string;
+    onAudioSent?: (data: any) => void;
+    onRecordingComplete?: (data: any) => void;
 }
 
-export const useAudioRecorder = ({ onRecordingComplete }: UseAudioRecorderProps = {}) => {
+/**
+ * Hook customizado para gerenciar a gravação e envio de áudio.
+ */
+export const useAudioRecorder = (props: UseAudioRecorderProps = {}) => {
+    const { contactId, channelId, onAudioSent, onRecordingComplete } = props;
+
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
+    const [isSending, setIsSending] = useState(false);
+
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
-    const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const chunksRef = useRef<Blob[]>([]);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Refs para capturar os IDs no momento do stop, caso venham por parâmetro
+    const activeContactIdRef = useRef<string | undefined>(contactId);
+    const activeChannelIdRef = useRef<string | undefined>(channelId);
+
+    const formatDuration = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
 
     const startRecording = async () => {
         try {
+            console.log('[useAudioRecorder] 🎤 Solicitando permissão de microfone...');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mediaRecorder = new MediaRecorder(stream);
             mediaRecorderRef.current = mediaRecorder;
-            audioChunksRef.current = [];
+            chunksRef.current = [];
 
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunksRef.current.push(event.data);
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunksRef.current.push(e.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+                console.log('[useAudioRecorder] ⏹️ Gravação finalizada, processando blob...');
+
+                const targetContactId = activeContactIdRef.current;
+                const targetChannelId = activeChannelIdRef.current;
+
+                if (targetContactId && targetChannelId) {
+                    await sendAudio(audioBlob, targetContactId, targetChannelId);
+                } else {
+                    console.error('[useAudioRecorder] ❌ Erro: IDs de contato ou canal não definidos.');
                 }
+
+                stream.getTracks().forEach(track => track.stop());
             };
 
             mediaRecorder.start();
             setIsRecording(true);
             setRecordingDuration(0);
 
-            recordingTimerRef.current = setInterval(() => {
+            console.log('[useAudioRecorder] ⏺️ Gravação iniciada.');
+
+            timerRef.current = setInterval(() => {
                 setRecordingDuration(prev => prev + 1);
             }, 1000);
 
-        } catch (err) {
-            console.error('Error accessing microphone:', err);
-            alert('Erro ao acessar microfone. Verifique as permissões.');
+        } catch (error) {
+            console.error('[useAudioRecorder] ❌ Erro ao iniciar gravação:', error);
+            alert('Não foi possível acessar o microfone.');
+        }
+    };
+
+    /**
+     * Finaliza a gravação e inicia o processo de envio.
+     * Aceita IDs por parâmetro para garantir sincronia com o estado do componente pai.
+     */
+    const finishRecording = (id?: string, chanId?: string) => {
+        if (id) activeContactIdRef.current = id;
+        if (chanId) activeChannelIdRef.current = chanId;
+
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            if (timerRef.current) clearInterval(timerRef.current);
         }
     };
 
     const cancelRecording = () => {
         if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.onstop = null; // Evita envio
             mediaRecorderRef.current.stop();
-            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+            setIsRecording(false);
+            if (timerRef.current) clearInterval(timerRef.current);
+            console.log('[useAudioRecorder] 🚫 Gravação cancelada pelo usuário.');
         }
-        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-        setIsRecording(false);
-        setRecordingDuration(0);
-        audioChunksRef.current = [];
     };
 
-    const finishRecording = async (
-        contactId: string,
-        channelId: string | null,
-        onSuccess?: () => void
-    ) => {
-        if (!mediaRecorderRef.current || !isRecording) return;
+    const sendAudio = async (blob: Blob, cId: string, chId: string) => {
+        setIsSending(true);
+        try {
+            const result = await chatService.sendMedia(
+                cId,
+                chId,
+                blob,
+                'audio'
+            );
+            console.log('[useAudioRecorder] ✅ Sucesso no envio:', result);
+            onAudioSent?.(result);
+            onRecordingComplete?.(result);
+        } catch (error) {
+            console.error('[useAudioRecorder] ❌ Erro ao enviar para o serviço:', error);
+        } finally {
+            setIsSending(false);
+        }
+    };
 
-        mediaRecorderRef.current.onstop = async () => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-
-            // Send to Backend
-            if (!contactId) return;
-
-            const formData = new FormData();
-            formData.append('file', audioBlob, 'voice_note.webm');
-            formData.append('type', 'audio');
-            if (channelId) formData.append('channelId', channelId);
-
-            try {
-                await chatService.sendMedia(contactId, formData);
-
-                if (onSuccess) onSuccess();
-                if (onRecordingComplete) onRecordingComplete();
-            } catch (err: any) {
-                console.error('Error uploading audio:', err);
-                alert(`Erro ao enviar áudio: ${err.message}`);
-            }
+    useEffect(() => {
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current);
         };
-
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-
-        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-        setIsRecording(false);
-        setRecordingDuration(0);
-    };
-
-    const formatDuration = (seconds: number) => {
-        const min = Math.floor(seconds / 60);
-        const sec = seconds % 60;
-        return `${min}:${sec.toString().padStart(2, '0')}`;
-    };
+    }, []);
 
     return {
         isRecording,
         recordingDuration,
+        formatDuration: () => formatDuration(recordingDuration),
+        isSending,
         startRecording,
-        cancelRecording,
-        finishRecording,
-        formatDuration
+        finishRecording, // Renomeado para match com ChatInterface.tsx
+        cancelRecording
     };
 };
