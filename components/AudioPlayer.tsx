@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Pause } from 'lucide-react';
+import { Play, Pause, Mic } from 'lucide-react';
 
 interface AudioPlayerProps {
     src: string;
     isUser: boolean;
+    timestamp?: string;
 }
 
 /**
- * Player de Áudio ULTRA COMPACTO
- * Design minimalista extremo para integração perfeita em balões de chat pequenos.
+ * Player de Áudio ULTRA PREMIUM & COMPACTO
+ * Estética de vidro, animações suaves e inteligência visual.
  */
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ src, isUser }) => {
+const AudioPlayer: React.FC<AudioPlayerProps> = ({ src, isUser, timestamp }) => {
     const [playing, setPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -19,15 +20,15 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ src, isUser }) => {
     const audioRef = useRef<HTMLAudioElement>(null);
     const progressBarRef = useRef<HTMLDivElement>(null);
 
-    // Onda visual ultra compacta (apenas 20 barras)
+    // Onda visual inteligente (determinística com base na URL)
     const waveformBars = useMemo(() => {
-        const bars = 20;
+        const bars = 30; // Aumentado para preencher a largura maior
         const result = [];
         let seed = src.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
 
         for (let i = 0; i < bars; i++) {
             seed = (seed * 9301 + 49297) % 233280;
-            const height = 30 + (seed % 60);
+            const height = 25 + (seed % 65);
             result.push(height);
         }
         return result;
@@ -37,11 +38,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ src, isUser }) => {
         const audio = audioRef.current;
         if (!audio) return;
 
-        console.log(`[AudioPlayer] 🎵 Tentando carregar: ${src}`);
-
         const updateProgress = () => setProgress(audio.currentTime);
         const setAudioData = () => {
-            console.log(`[AudioPlayer] ✅ Áudio carregado. Duração: ${audio.duration}s`);
             setDuration(audio.duration);
             setIsLoaded(true);
         };
@@ -49,24 +47,17 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ src, isUser }) => {
             setPlaying(false);
             setProgress(0);
         };
-        const onError = (e: any) => {
-            console.error(`[AudioPlayer] ❌ Erro ao carregar áudio:`, src, e);
-        };
 
-        if (audio.readyState >= 2) {
-            setAudioData();
-        }
+        if (audio.readyState >= 2) setAudioData();
 
         audio.addEventListener('timeupdate', updateProgress);
         audio.addEventListener('loadedmetadata', setAudioData);
         audio.addEventListener('ended', onEnded);
-        audio.addEventListener('error', onError);
 
         return () => {
             audio.removeEventListener('timeupdate', updateProgress);
             audio.removeEventListener('loadedmetadata', setAudioData);
             audio.removeEventListener('ended', onEnded);
-            audio.removeEventListener('error', onError);
         };
     }, [src]);
 
@@ -101,40 +92,56 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ src, isUser }) => {
         return `${min}:${sec.toString().padStart(2, '0')}`;
     };
 
-    const bgColor = isUser
-        ? 'bg-gradient-to-r from-blue-600 to-teal-500 rounded-tr-sm'
-        : 'bg-slate-100 rounded-tl-sm';
+    // Estilo Outbound (Enviado) vs Inbound (Recebido)
+    const containerClasses = isUser
+        ? 'bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-tr-sm shadow-lg shadow-blue-500/20'
+        : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100 shadow-sm';
 
     return (
         <div className={`
-            flex items-center gap-2 p-1.5 pr-2 rounded-2xl min-w-[170px] max-w-[200px] 
-            transition-all duration-300 shadow-sm
-            ${bgColor} ${isUser ? 'text-white' : 'text-slate-800'}
+            flex items-center gap-2.5 p-2 pr-3 rounded-2xl min-w-[260px] max-w-[320px] 
+            transition-all duration-300 relative overflow-hidden group
+            ${containerClasses}
         `}>
-            {/* Botão de Play Mini */}
-            <button
-                onClick={togglePlay}
-                disabled={!isLoaded}
-                className={`
-                    w-7 h-7 rounded-full flex items-center justify-center transition-all flex-shrink-0
-                    active:scale-90 hover:opacity-90
-                    ${isUser ? 'bg-white text-blue-600' : 'bg-blue-600 text-white'}
-                    ${!isLoaded && 'opacity-50 cursor-wait'}
-                `}
-            >
-                {playing ? (
-                    <Pause size={14} fill="currentColor" />
-                ) : (
-                    <Play size={14} fill="currentColor" className="ml-0.5" />
-                )}
-            </button>
+            {/* Brilho de Vidro Interno (Apenas Outbound) */}
+            {isUser && <div className="absolute inset-0 bg-white/5 pointer-events-none"></div>}
 
-            <div className="flex-1 flex flex-col justify-center overflow-hidden">
-                {/* Waveform Ultra Compacta */}
+            {/* Ícone de Microfone Mini (Inteligência Visual) */}
+            <div className={`relative flex-shrink-0 ${playing ? 'scale-110' : 'scale-100'} transition-transform duration-500`}>
+                <div className={`
+                    w-8 h-8 rounded-full flex items-center justify-center transition-all
+                    ${isUser ? 'bg-white/20 backdrop-blur-md' : 'bg-blue-50'}
+                `}>
+                    <button
+                        onClick={togglePlay}
+                        disabled={!isLoaded}
+                        className={`
+                            w-6 h-6 rounded-full flex items-center justify-center transition-all
+                            active:scale-90 hover:scale-105
+                            ${isUser ? 'bg-white text-blue-600 shadow-sm' : 'bg-blue-600 text-white shadow-md shadow-blue-200'}
+                            ${!isLoaded && 'opacity-50 cursor-wait'}
+                        `}
+                    >
+                        {playing ? (
+                            <Pause size={12} fill="currentColor" />
+                        ) : (
+                            <Play size={12} fill="currentColor" className="ml-0.5" />
+                        )}
+                    </button>
+                </div>
+                {playing && (
+                    <span className={`absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full flex items-center justify-center animate-pulse border-2 ${isUser ? 'bg-teal-400 border-blue-600' : 'bg-blue-600 border-white'}`}>
+                        <Mic size={6} className="text-white" />
+                    </span>
+                )}
+            </div>
+
+            <div className="flex-1 flex flex-col justify-center min-w-0">
+                {/* Waveform Polida */}
                 <div
                     ref={progressBarRef}
                     onClick={handleProgressClick}
-                    className="h-4 flex items-center gap-[1px] cursor-pointer"
+                    className="h-5 flex items-center gap-[1.5px] cursor-pointer"
                 >
                     {waveformBars.map((height, i) => {
                         const barProgress = (i / waveformBars.length) * duration;
@@ -142,28 +149,35 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ src, isUser }) => {
                         return (
                             <div
                                 key={i}
-                                className={`flex-1 rounded-full transition-colors duration-200 
-                                    ${isPlayed ? (isUser ? 'bg-white' : 'bg-blue-600') : (isUser ? 'bg-white/30' : 'bg-slate-300')}
+                                className={`flex-1 rounded-full transition-all duration-300 
+                                    ${isPlayed
+                                        ? (isUser ? 'bg-white h-full' : 'bg-blue-600 h-full')
+                                        : (isUser ? 'bg-white/30 h-1/2' : 'bg-slate-200 h-1/2')}
                                 `}
-                                style={{ height: `${height}%` }}
+                                style={{ height: isPlayed ? `${height}%` : `${height / 2}%` }}
                             />
                         );
                     })}
                 </div>
 
-                <div className="flex justify-between items-center text-[8px] font-bold opacity-70 leading-none mt-0.5">
-                    <span>{formatTime(progress)} / {formatTime(duration)}</span>
+                <div className="flex justify-between items-center text-[10px] font-medium mt-1 select-none">
+                    <span className="opacity-90">{formatTime(progress)}</span>
 
-                    {/* Velocidade Mini */}
-                    <button
-                        onClick={(e) => { e.stopPropagation(); toggleSpeed(); }}
-                        className={`
-                            px-1 rounded-sm bg-black/5 hover:bg-black/10 transition-colors
-                            ${isUser ? 'bg-white/10 text-white' : 'text-slate-500'}
-                        `}
-                    >
-                        {playbackRate}x
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {/* Indicador de Velocidade Premium */}
+                        <button
+                            onClick={(e) => { e.stopPropagation(); toggleSpeed(); }}
+                            className={`
+                                px-1.5 py-0.5 rounded-full text-[9px] font-bold transition-all
+                                ${isUser
+                                    ? 'bg-white/20 hover:bg-white/30 text-white'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-500'}
+                            `}
+                        >
+                            {playbackRate}x
+                        </button>
+                        <span className="opacity-70">{formatTime(duration)}</span>
+                    </div>
                 </div>
             </div>
 

@@ -2020,6 +2020,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                             return rawSrc.startsWith('http') ? rawSrc : `http://localhost:3001${rawSrc}`;
                           })()}
                           isUser={msg.sender === 'user'}
+                          timestamp={msg.timestamp}
                         />
                       )}
 
@@ -2041,13 +2042,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         </div>
                       )}
 
-                      <div className={`text-[10px] mt-1.5 flex items-center justify-end gap-1 select-none ${isUser ? 'text-white/70' : 'text-slate-400'}`}>
+                      <div className={`text-[10px] mt-1.5 flex items-center justify-end gap-1 select-none ${isUser && msg.type !== MessageType.AUDIO ? 'text-white/70' : 'text-slate-400'}`}>
                         {msg.timestamp}
                         {msg.sender === 'user' && (
                           <span className="ml-0.5">
-                            {msg.status === 'read' ? <CheckCheck size={13} className="text-white" /> :
-                              msg.status === 'delivered' ? <CheckCheck size={13} className="text-white/60" /> :
-                                <Check size={13} className="text-white/60" />}
+                            {msg.status === 'read' ? <CheckCheck size={13} className={msg.type === MessageType.AUDIO ? "text-blue-500" : "text-white"} /> :
+                              msg.status === 'delivered' ? <CheckCheck size={13} className={msg.type === MessageType.AUDIO ? "text-slate-400" : "text-white/60"} /> :
+                                <Check size={13} className={msg.type === MessageType.AUDIO ? "text-slate-400" : "text-white/60"} />}
                           </span>
                         )}
                       </div>
