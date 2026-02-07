@@ -160,33 +160,37 @@ const WhatsAppService = {
                 console.error('❌ Erro ao baixar imagem da Meta:', err.message);
                 body = '[Imagem - Erro no Download]';
             }
-        } else if (type === 'button_reply') {
-            const reply = messageData.button_reply;
-            body = reply.title;
-            mediaType = 'text'; // Normaliza para renderizar como texto no chat
-            console.log(`🔘 Resposta de Botão: [${reply.id}] ${reply.title}`);
-        } else if (type === 'list_reply') {
-            const reply = messageData.list_reply;
-            body = reply.title;
-            mediaType = 'text'; // Normaliza para renderizar como texto no chat
-            console.log(`🗒️ Resposta de Lista: [${reply.id}] ${reply.title}`);
+        } else if (type === 'button_reply' || messageData.button_reply) {
+            const reply = messageData.button_reply || type.button_reply;
+            body = reply.title || reply.id;
+            mediaType = 'text';
+            console.log(`🔘 Resposta de Botão: ${body}`);
+        } else if (type === 'list_reply' || messageData.list_reply) {
+            const reply = messageData.list_reply || type.list_reply;
+            const title = reply.title || reply.id;
+            const description = reply.description ? `\n${reply.description}` : '';
+            body = `${title}${description}`;
+            mediaType = 'text';
+            console.log(`🗒️ Resposta de Lista: ${body.replace('\n', ' - ')}`);
         } else if (type === 'interactive' || messageData.interactive) {
             const interactive = messageData.interactive;
             if (interactive.button_reply) {
-                body = interactive.button_reply.title;
+                body = interactive.button_reply.title || interactive.button_reply.id;
                 mediaType = 'text';
                 console.log(`🔘 [Interactive] Resposta de Botão: ${body}`);
             } else if (interactive.list_reply) {
-                body = interactive.list_reply.title;
+                const reply = interactive.list_reply;
+                const title = reply.title || reply.id;
+                const description = reply.description ? `\n${reply.description}` : '';
+                body = `${title}${description}`;
                 mediaType = 'text';
-                console.log(`🗒️ [Interactive] Resposta de Lista: ${body}`);
+                console.log(`🗒️ [Interactive] Resposta de Lista: ${body.replace('\n', ' - ')}`);
             } else {
                 body = '[Mensagem Interativa]';
             }
         } else if (type === 'button') {
             body = messageData.button.text;
             mediaType = 'text';
-            console.log(`🔘 Resposta de Botão (type: button): ${body}`);
         } else {
             body = `[${type.toUpperCase()}]`;
             if (messageData[type] && messageData[type].id) {
