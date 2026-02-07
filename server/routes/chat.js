@@ -363,43 +363,7 @@ router.post('/:contactId/send', async (req, res) => {
                 payload.sticker = { link: req.body.link || content };
                 break;
 
-            case 'interactive':
-                const interactiveData = req.body.interactive;
-                if (!interactiveData) return res.status(400).json({ error: 'Dados interativos ausentes.' });
 
-                payload.type = "interactive";
-                payload.interactive = {};
-
-                if (interactiveData.type === 'button') {
-                    payload.interactive.type = "button";
-                    payload.interactive.body = { text: interactiveData.body.text };
-                    if (interactiveData.header) {
-                        payload.interactive.header = { type: 'text', text: interactiveData.header.text };
-                    }
-                    if (interactiveData.footer) {
-                        payload.interactive.footer = { text: interactiveData.footer.text };
-                    }
-                    payload.interactive.action = {
-                        buttons: interactiveData.action.buttons.map(btn => ({
-                            type: 'reply',
-                            reply: { id: btn.reply.id, title: btn.reply.title }
-                        }))
-                    };
-                } else if (interactiveData.type === 'list') {
-                    payload.interactive.type = "list";
-                    payload.interactive.body = { text: interactiveData.body.text };
-                    if (interactiveData.header) {
-                        payload.interactive.header = { type: 'text', text: interactiveData.header.text };
-                    }
-                    if (interactiveData.footer) {
-                        payload.interactive.footer = { text: interactiveData.footer.text };
-                    }
-                    payload.interactive.action = {
-                        button: interactiveData.action.button,
-                        sections: interactiveData.action.sections
-                    };
-                }
-                break;
 
             case 'text':
             default:
@@ -436,10 +400,7 @@ router.post('/:contactId/send', async (req, res) => {
             const filename = req.body.filename ? ` (${req.body.filename})` : '';
             messageLogContent = `[${msgType.toUpperCase()}]${filename}${caption}`;
         }
-        else if (msgType === 'interactive') {
-            // Save full content as JSON for rich rendering in frontend
-            messageLogContent = JSON.stringify(req.body.interactive);
-        }
+
 
         const insert = await db.query(
             `INSERT INTO chat_logs 

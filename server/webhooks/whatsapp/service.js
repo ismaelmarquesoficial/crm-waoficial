@@ -160,6 +160,33 @@ const WhatsAppService = {
                 console.error('❌ Erro ao baixar imagem da Meta:', err.message);
                 body = '[Imagem - Erro no Download]';
             }
+        } else if (type === 'button_reply') {
+            const reply = messageData.button_reply;
+            body = reply.title;
+            mediaType = 'text'; // Normaliza para renderizar como texto no chat
+            console.log(`🔘 Resposta de Botão: [${reply.id}] ${reply.title}`);
+        } else if (type === 'list_reply') {
+            const reply = messageData.list_reply;
+            body = reply.title;
+            mediaType = 'text'; // Normaliza para renderizar como texto no chat
+            console.log(`🗒️ Resposta de Lista: [${reply.id}] ${reply.title}`);
+        } else if (type === 'interactive' || messageData.interactive) {
+            const interactive = messageData.interactive;
+            if (interactive.button_reply) {
+                body = interactive.button_reply.title;
+                mediaType = 'text';
+                console.log(`🔘 [Interactive] Resposta de Botão: ${body}`);
+            } else if (interactive.list_reply) {
+                body = interactive.list_reply.title;
+                mediaType = 'text';
+                console.log(`🗒️ [Interactive] Resposta de Lista: ${body}`);
+            } else {
+                body = '[Mensagem Interativa]';
+            }
+        } else if (type === 'button') {
+            body = messageData.button.text;
+            mediaType = 'text';
+            console.log(`🔘 Resposta de Botão (type: button): ${body}`);
         } else {
             body = `[${type.toUpperCase()}]`;
             if (messageData[type] && messageData[type].id) {

@@ -825,11 +825,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
     const token = localStorage.getItem('token');
 
     try {
-      const res = await fetch(`http://localhost:3001/api/chat/${activeContactId}/send`, {
+      const res = await fetch(`http://localhost:3001/api/whatsapp-official/interactive/send/${activeContactId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          ...interactiveData,
+          interactive: interactiveData.interactive,
           channelId: currentChatChannel
         })
       });
@@ -2039,38 +2039,45 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
                       {/* Interactive Messages (Buttons / Lists) */}
                       {msg.type === MessageType.INTERACTIVE && (() => {
+                        let data;
                         try {
-                          const data = JSON.parse(msg.content);
-                          return (
-                            <div className="flex flex-col gap-1.5 min-w-[200px]">
-                              {/* Header */}
-                              {data.header?.text && <p className="font-bold text-sm mb-1">{data.header.text}</p>}
-
-                              {/* Body */}
-                              <p className="whitespace-pre-wrap leading-relaxed">{data.body?.text}</p>
-
-                              {/* Footer */}
-                              {data.footer?.text && <p className="text-[10px] opacity-70 mt-1">{data.footer.text}</p>}
-
-                              {/* Buttons / Actions */}
-                              <div className="mt-2 space-y-1.5">
-                                {data.type === 'button' && data.action?.buttons?.map((b: any, i: number) => (
-                                  <div key={i} className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm transition-all ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
-                                    {b.reply?.title}
-                                  </div>
-                                ))}
-                                {data.type === 'list' && (
-                                  <div className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm flex items-center justify-center gap-2 ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
-                                    <List size={14} />
-                                    {data.action?.button || 'Ver Opções'}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
+                          data = JSON.parse(msg.content);
                         } catch (e) {
-                          return <p className="leading-relaxed whitespace-pre-wrap text-xs opacity-70 italic">[Mensagem Interativa]</p>;
+                          return <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>;
                         }
+
+                        // Suporte ao novo formato (objeto completo da Meta)
+                        if (data.type === 'interactive' && data.interactive) {
+                          data = data.interactive;
+                        }
+
+                        return (
+                          <div className="flex flex-col gap-1.5 min-w-[200px]">
+                            {/* Header */}
+                            {data.header?.text && <p className="font-bold text-sm mb-1">{data.header.text}</p>}
+
+                            {/* Body */}
+                            <p className="whitespace-pre-wrap leading-relaxed">{data.body?.text}</p>
+
+                            {/* Footer */}
+                            {data.footer?.text && <p className="text-[10px] opacity-70 mt-1">{data.footer.text}</p>}
+
+                            {/* Buttons / Actions */}
+                            <div className="mt-2 space-y-1.5">
+                              {data.type === 'button' && data.action?.buttons?.map((b: any, i: number) => (
+                                <div key={i} className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm transition-all ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
+                                  {b.reply?.title}
+                                </div>
+                              ))}
+                              {data.type === 'list' && (
+                                <div className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm flex items-center justify-center gap-2 ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
+                                  <List size={14} />
+                                  {data.action?.button || 'Ver Opções'}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
                       })()}
 
                       {msg.type === MessageType.AUDIO && (

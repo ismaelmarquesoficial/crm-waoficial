@@ -100,3 +100,23 @@ Para o layout ficar moderno e bonito, siga estas regras de estrutura:
 *   **Fundo:** `#F8FAFC` (Cinza gelo).
 *   **Sem Bordas:** Visual clean e sem ruído.
 *   **Texto Interno:** Cor sólida com peso 500 (Medium).
+
+
+
+#### Fomato de salvar a mensage enviada
+O o formato salvo no banco de dados para as mensagens enviadas na coluna message da tabela chat_logs é um JSON, onde salva o objeto inteiro da mensagem enviada, como o exemplo abaixo:
+
+```json
+{
+    "id": "1234567890",
+    "from": "1234567890",
+    "to": "1234567890",
+    "type": "text",
+    "text": {
+        "body": "Hello World"
+    },
+    "timestamp": "2022-01-01T00:00:00.000Z"
+}
+```
+
+Na conversa, as mensagens interativas são renderizadas de forma "rica" (com botões e listas visíveis) graças ao processamento do JSON que você salva no banco.
