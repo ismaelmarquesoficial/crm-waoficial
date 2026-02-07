@@ -11,42 +11,45 @@ const InteractiveReceiver = {
     processReply: (messageData) => {
         const type = messageData.type;
         let body = '';
+        let displayBody = ''; // Texto simples para o preview/inbox
 
-        // 1. Resposta de Botão Direta
-        if (type === 'button_reply' || messageData.button_reply) {
-            const reply = messageData.button_reply || type.button_reply;
-            body = reply.title || reply.id;
+        // 1. Resposta de Botão Direta (ex: Templates)
+        if (type === 'button' && messageData.button) {
+            body = JSON.stringify(messageData.button);
+            displayBody = messageData.button.text || messageData.button.payload;
         }
-        // 2. Resposta de Lista Direta
+        // 2. Resposta de Botão Direta (Reply - Legacy ou redundante)
+        else if (type === 'button_reply' || messageData.button_reply) {
+            const reply = messageData.button_reply || type.button_reply;
+            body = JSON.stringify(reply);
+            displayBody = reply.title || reply.id;
+        }
+        // 3. Resposta de Lista Direta
         else if (type === 'list_reply' || messageData.list_reply) {
             const reply = messageData.list_reply || type.list_reply;
-            const title = reply.title || reply.id;
-            const description = reply.description ? `\n${reply.description}` : '';
-            body = `${title}${description}`;
+            body = JSON.stringify(reply);
+            displayBody = reply.title || reply.id;
         }
-        // 3. Encapsulado em Interactive (Padrão Meta v19+)
+        // 4. Encapsulado em Interactive (Padrão Meta v19+, inclui Carrossel)
         else if (type === 'interactive' || messageData.interactive) {
             const interactive = messageData.interactive;
 
             if (interactive.button_reply) {
-                body = interactive.button_reply.title || interactive.button_reply.id;
+                body = JSON.stringify(interactive.button_reply);
+                displayBody = interactive.button_reply.title || interactive.button_reply.id;
             } else if (interactive.list_reply) {
-                const reply = interactive.list_reply;
-                const title = reply.title || reply.id;
-                const description = reply.description ? `\n${reply.description}` : '';
-                body = `${title}${description}`;
+                body = JSON.stringify(interactive.list_reply);
+                displayBody = interactive.list_reply.title || interactive.list_reply.id;
             } else {
-                body = '[Mensagem Interativa]';
+                body = JSON.stringify(interactive);
+                displayBody = '[Mensagem Interativa]';
             }
-        }
-        // 4. Botão Simples (Templates)
-        else if (type === 'button' && messageData.button) {
-            body = messageData.button.text;
         }
 
         return {
             body: body || '[Mensagem Interativa]',
-            mediaType: 'text' // Sempre normalizamos para texto para renderizar na conversa
+            displayBody: displayBody || '[Mensagem Interativa]',
+            mediaType: 'text'
         };
     }
 };

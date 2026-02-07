@@ -104,7 +104,7 @@ Para o layout ficar moderno e bonito, siga estas regras de estrutura:
 
 
 #### Fomato de salvar a mensage enviada
-O o formato salvo no banco de dados para as mensagens enviadas na coluna message da tabela chat_logs é um JSON, onde salva o objeto inteiro da mensagem enviada, como o exemplo abaixo:
+O o formato salvo no banco de dados para as mensagens enviadas na coluna message da tabela chat_logs é um JSON string, onde salva o objeto inteiro da mensagem enviada, como o exemplo abaixo:
 
 ```json
 {

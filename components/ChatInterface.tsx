@@ -1968,7 +1968,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'}`
                       }`}>
                       {(msg.type === MessageType.TEXT || msg.type === MessageType.BUTTON_REPLY || msg.type === MessageType.LIST_REPLY || msg.type === MessageType.BUTTON) && (
-                        <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                        <p className="leading-relaxed whitespace-pre-wrap">
+                          {(() => {
+                            if (msg.type === MessageType.TEXT) return msg.content;
+                            try {
+                              const data = JSON.parse(msg.content);
+                              return data.text || data.title || msg.content;
+                            } catch (e) {
+                              return msg.content;
+                            }
+                          })()}
+                        </p>
                       )}
 
                       {/* Template Messages */}
