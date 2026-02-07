@@ -35,6 +35,7 @@ const WhatsAppService = {
         const fs = require('fs');
         const path = require('path');
         const fileManager = require('../../utils/fileManager');
+        const InteractiveReceiver = require('../../services/whatsapp-oficial/Interactive/InteractiveReceiver');
 
         // Extrair dados da mensagem da Meta
         const wamid = messageData.id;
@@ -160,37 +161,14 @@ const WhatsAppService = {
                 console.error('❌ Erro ao baixar imagem da Meta:', err.message);
                 body = '[Imagem - Erro no Download]';
             }
-        } else if (type === 'button_reply' || messageData.button_reply) {
-            const reply = messageData.button_reply || type.button_reply;
-            body = reply.title || reply.id;
-            mediaType = 'text';
-            console.log(`🔘 Resposta de Botão: ${body}`);
-        } else if (type === 'list_reply' || messageData.list_reply) {
-            const reply = messageData.list_reply || type.list_reply;
-            const title = reply.title || reply.id;
-            const description = reply.description ? `\n${reply.description}` : '';
-            body = `${title}${description}`;
-            mediaType = 'text';
-            console.log(`🗒️ Resposta de Lista: ${body.replace('\n', ' - ')}`);
-        } else if (type === 'interactive' || messageData.interactive) {
-            const interactive = messageData.interactive;
-            if (interactive.button_reply) {
-                body = interactive.button_reply.title || interactive.button_reply.id;
-                mediaType = 'text';
-                console.log(`🔘 [Interactive] Resposta de Botão: ${body}`);
-            } else if (interactive.list_reply) {
-                const reply = interactive.list_reply;
-                const title = reply.title || reply.id;
-                const description = reply.description ? `\n${reply.description}` : '';
-                body = `${title}${description}`;
-                mediaType = 'text';
-                console.log(`🗒️ [Interactive] Resposta de Lista: ${body.replace('\n', ' - ')}`);
-            } else {
-                body = '[Mensagem Interativa]';
-            }
-        } else if (type === 'button') {
-            body = messageData.button.text;
-            mediaType = 'text';
+        } else if (
+            ['button_reply', 'list_reply', 'interactive', 'button'].includes(type) ||
+            messageData.interactive || messageData.button_reply || messageData.list_reply
+        ) {
+            const result = InteractiveReceiver.processReply(messageData);
+            body = result.body;
+            mediaType = result.mediaType;
+            console.log(`[InteractiveReceiver] Processado: ${body.replace('\n', ' ')}`);
         } else {
             body = `[${type.toUpperCase()}]`;
             if (messageData[type] && messageData[type].id) {
