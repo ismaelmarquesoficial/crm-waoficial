@@ -2054,7 +2054,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         return (
                           <div className="flex flex-col gap-1.5 min-w-[200px]">
                             {/* Header */}
-                            {data.header?.text && <p className="font-bold text-sm mb-1">{data.header.text}</p>}
+                            {data.header?.type === 'text' && <p className="font-bold text-sm mb-1">{data.header.text}</p>}
+                            {data.header?.type === 'image' && data.header.image?.link && (
+                              <img src={data.header.image.link} alt="Header" className="rounded-lg mb-2 w-full object-cover max-h-32 shadow-sm" />
+                            )}
+                            {data.header?.type === 'video' && data.header.video?.link && (
+                              <div className="bg-slate-100 rounded-lg p-4 flex flex-col items-center justify-center mb-2 gap-2 text-slate-400">
+                                <Send size={24} className="rotate-90" />
+                                <span className="text-[10px] font-bold uppercase">Vídeo Interativo</span>
+                              </div>
+                            )}
+                            {data.header?.type === 'document' && data.header.document?.link && (
+                              <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 flex items-center gap-3 mb-2 shadow-sm">
+                                <FileText size={20} className="text-blue-500" />
+                                <div className="overflow-hidden">
+                                  <p className="text-xs font-bold text-slate-700 truncate">Documento Anexo</p>
+                                  <p className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Cabeçalho Interativo</p>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Body */}
                             <p className="whitespace-pre-wrap leading-relaxed">{data.body?.text}</p>
@@ -2074,6 +2092,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                                   <List size={14} />
                                   {data.action?.button || 'Ver Opções'}
                                 </div>
+                              )}
+                              {data.type === 'cta_url' && (
+                                <a
+                                  href={data.action?.parameters?.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm flex items-center justify-center gap-2 no-underline transition-all ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50'}`}
+                                >
+                                  <Globe size={14} />
+                                  {data.action?.parameters?.display_text || 'Abrir Link'}
+                                </a>
                               )}
                             </div>
                           </div>
