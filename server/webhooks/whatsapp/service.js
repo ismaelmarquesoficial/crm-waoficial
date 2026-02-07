@@ -163,7 +163,7 @@ const WhatsAppService = {
             }
         } else if (
             ['button_reply', 'list_reply', 'interactive', 'button'].includes(type) ||
-            messageData.interactive || messageData.button_reply || messageData.list_reply
+            messageData.interactive || messageData.button_reply || messageData.list_reply || messageData.button
         ) {
             const result = InteractiveReceiver.processReply(messageData);
             body = result.body;

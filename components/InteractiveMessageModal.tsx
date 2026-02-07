@@ -688,23 +688,24 @@ export default function InteractiveMessageModal({ isOpen, onClose, onSend, chann
                                                         <div className="space-y-2">
                                                             <div className="flex justify-between items-center">
                                                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Botoes de Resposta</label>
-                                                                {idx === 0 && card.action.buttons!.length < 3 && (
+                                                                {card.action.buttons!.length < 3 && (
                                                                     <button
                                                                         onClick={() => {
                                                                             const newBtnIdx = card.action.buttons!.length + 1;
-                                                                            // Apply to all cards for consistency
+                                                                            // Meta requirement: All cards MUST have the same number of buttons.
+                                                                            // We add a button to all cards.
                                                                             const newCards = carouselCards.map((c, cidx) => ({
                                                                                 ...c,
                                                                                 action: {
                                                                                     ...c.action,
-                                                                                    buttons: [...c.action.buttons!, { type: 'quick_reply' as const, quick_reply: { id: `card_${cidx}_btn_${newBtnIdx}`, title: 'Novo Botão' } }]
+                                                                                    buttons: [...c.action.buttons!, { type: 'quick_reply' as const, quick_reply: { id: `card_${cidx}_btn_${newBtnIdx}`, title: 'Selecionar' } }]
                                                                                 }
                                                                             }));
                                                                             setCarouselCards(newCards);
                                                                         }}
                                                                         className="text-[10px] text-blue-500 font-bold uppercase"
                                                                     >
-                                                                        + Add para todos
+                                                                        + Adicionar Botão
                                                                     </button>
                                                                 )}
                                                             </div>
@@ -715,22 +716,22 @@ export default function InteractiveMessageModal({ isOpen, onClose, onSend, chann
                                                                         value={btn.quick_reply.title}
                                                                         onChange={(e) => {
                                                                             const val = e.target.value;
-                                                                            // Update title for this specific button index in all cards to maintain consistency
-                                                                            const newCards = carouselCards.map((c) => {
-                                                                                const newBtns = [...c.action.buttons!];
-                                                                                newBtns[bidx] = { ...newBtns[bidx], quick_reply: { ...newBtns[bidx].quick_reply, title: val } };
-                                                                                return { ...c, action: { ...c.action, buttons: newBtns } };
-                                                                            });
+                                                                            // UPDATE ONLY THIS CARD'S BUTTON
+                                                                            const newCards = [...carouselCards];
+                                                                            const newBtns = [...newCards[idx].action.buttons!];
+                                                                            newBtns[bidx] = { ...newBtns[bidx], quick_reply: { ...newBtns[bidx].quick_reply, title: val } };
+                                                                            newCards[idx] = { ...newCards[idx], action: { ...newCards[idx].action, buttons: newBtns } };
                                                                             setCarouselCards(newCards);
                                                                         }}
                                                                         maxLength={20}
                                                                         className="flex-1 px-3 py-1.5 bg-white rounded-lg border border-slate-200 text-xs font-bold text-blue-600 outline-none"
                                                                         placeholder="Texto do Botão"
                                                                     />
-                                                                    {idx === 0 && card.action.buttons!.length > 1 && (
+                                                                    {card.action.buttons!.length > 1 && (
                                                                         <button
                                                                             onClick={() => {
-                                                                                // Remove from all cards
+                                                                                // Meta requirement: All cards MUST have the same number of buttons.
+                                                                                // We must remove this button index from ALL cards.
                                                                                 const newCards = carouselCards.map((c) => ({
                                                                                     ...c,
                                                                                     action: { ...c.action, buttons: c.action.buttons!.filter((_, bi) => bi !== bidx) }
@@ -738,6 +739,7 @@ export default function InteractiveMessageModal({ isOpen, onClose, onSend, chann
                                                                                 setCarouselCards(newCards);
                                                                             }}
                                                                             className="p-1 px-2.5 bg-red-50 text-red-500 rounded-lg"
+                                                                            title="Remove este botão de todos os cartões"
                                                                         >
                                                                             ×
                                                                         </button>

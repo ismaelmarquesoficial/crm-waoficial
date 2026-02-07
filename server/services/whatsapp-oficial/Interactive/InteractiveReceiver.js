@@ -40,7 +40,7 @@ const InteractiveReceiver = {
             }
         }
         // 4. Botão Simples (Templates)
-        else if (type === 'button') {
+        else if (type === 'button' && messageData.button) {
             body = messageData.button.text;
         }
 

@@ -290,7 +290,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
         setMessages((prev) => {
           // Avoid duplicates
           if (prev.some(m => m.id === data.id)) return prev;
-          return [...prev, data];
+
+          // Map backend format to frontend Message interface
+          const date = new Date(data.timestamp);
+          const mappedMessage: Message = {
+            id: data.id,
+            contactId: data.contact_id,
+            sender: data.direction === 'INBOUND' ? 'contact' : 'user',
+            type: (data.type || 'text') as MessageType,
+            content: (['image', 'audio', 'video', 'document'].includes(data.type) && data.media_url) ? data.media_url : data.message,
+            timestamp: date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            status: (data.status || 'read') as any,
+            fileName: data.file_name,
+            channelId: data.whatsapp_account_id,
+            file_path_mp3: data.file_path_mp3,
+            file_path_ogg: data.file_path_ogg
+          };
+
+          return [...prev, mappedMessage];
         });
       }
 
@@ -1950,7 +1967,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         ? `${msg.type === MessageType.IMAGE ? 'gradient-border-user text-slate-800' : 'bg-gradient-to-r from-blue-600 to-teal-500 text-white'} rounded-tr-sm`
                         : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'}`
                       }`}>
-                      {msg.type === MessageType.TEXT && <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
+                      {(msg.type === MessageType.TEXT || msg.type === MessageType.BUTTON_REPLY || msg.type === MessageType.LIST_REPLY || msg.type === MessageType.BUTTON) && (
+                        <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                      )}
 
                       {/* Template Messages */}
                       {/* Template Messages */}

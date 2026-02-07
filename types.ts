@@ -5,7 +5,10 @@ export enum MessageType {
   VIDEO = 'video',
   DOCUMENT = 'document',
   TEMPLATE = 'template',
-  INTERACTIVE = 'interactive'
+  INTERACTIVE = 'interactive',
+  BUTTON_REPLY = 'button_reply',
+  LIST_REPLY = 'list_reply',
+  BUTTON = 'button'
 }
 
 export interface Contact {
@@ -34,6 +37,8 @@ export interface Message {
   timestamp: string;
   status: 'sent' | 'delivered' | 'read';
   channelId?: string;
+  file_path_mp3?: string;
+  file_path_ogg?: string;
 }
 
 export interface PipelineStage {
