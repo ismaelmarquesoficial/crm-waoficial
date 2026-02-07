@@ -67,8 +67,9 @@ router.post('/send/:contactId', verifyToken, async (req, res) => {
         res.json(insert.rows[0]);
 
     } catch (err) {
+        const errorMsg = err.response?.data?.error?.message || err.message;
         console.error('Erro ao enviar mensagem interativa:', err.response?.data || err.message);
-        res.status(500).json({ error: 'Erro ao enviar mensagem interativa via WhatsApp Oficial.' });
+        res.status(500).json({ error: `Erro na Meta: ${errorMsg}` });
     }
 });
 

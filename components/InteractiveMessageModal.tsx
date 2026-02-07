@@ -4,7 +4,7 @@ import { X, Plus, Trash2, List, LayoutTemplate, MessageSquare, Send, ArrowLeft, 
 interface InteractiveMessageModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSend: (data: any) => void;
+    onSend: (data: any) => Promise<boolean>;
 }
 
 type InteractiveType = 'button' | 'list' | 'cta_url';
@@ -41,6 +41,36 @@ export default function InteractiveMessageModal({ isOpen, onClose, onSend }: Int
     const [headerMediaUrl, setHeaderMediaUrl] = useState('');
 
     const [isSending, setIsSending] = useState(false);
+    const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
+
+    const handleFetchMetadata = async () => {
+        if (!ctaUrl) return;
+        setIsFetchingMetadata(true);
+        try {
+            const response = await fetch(`http://localhost:3001/api/utils/metadata?url=${encodeURIComponent(ctaUrl)}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            const data = await response.json();
+            if (data && !data.error) {
+                if (data.image) {
+                    setHeaderType('image');
+                    setHeaderMediaUrl(data.image);
+                }
+                if (data.title) {
+                    setHeaderText(data.title.substring(0, 60));
+                }
+                if (data.description) {
+                    setBodyText(data.description.substring(0, 1024));
+                }
+            }
+        } catch (err) {
+            console.error('Erro ao buscar metadados:', err);
+        } finally {
+            setIsFetchingMetadata(false);
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -143,8 +173,10 @@ export default function InteractiveMessageModal({ isOpen, onClose, onSend }: Int
 
         setIsSending(true);
         try {
-            await onSend(payload);
-            onClose();
+            const success = await onSend(payload);
+            if (success) {
+                onClose();
+            }
         } catch (error) {
             console.error("Erro ao enviar no modal:", error);
         } finally {
@@ -287,25 +319,37 @@ export default function InteractiveMessageModal({ isOpen, onClose, onSend }: Int
 
                                 {activeTab === 'cta_url' && (
                                     <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100/50 space-y-4">
-                                        <div>
+                                        <div className="relative">
                                             <label className="block text-xs font-bold text-blue-400 uppercase tracking-widest mb-2">Rótulo do Botão <span className="text-red-500">*</span></label>
                                             <input
                                                 type="text"
                                                 value={ctaButtonText}
                                                 onChange={(e) => setCtaButtonText(e.target.value)}
+                                                maxLength={20}
                                                 className="w-full px-4 py-3 rounded-xl bg-white border border-blue-100 focus:ring-2 focus:ring-blue-500/20 text-slate-700 font-bold outline-none"
                                                 placeholder="Ex: Ver Site"
                                             />
+                                            <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold tracking-tight px-1">MÁX. 20 CARACTERES</p>
                                         </div>
-                                        <div>
+                                        <div className="relative">
                                             <label className="block text-xs font-bold text-blue-400 uppercase tracking-widest mb-2">URL de Destino <span className="text-red-500">*</span></label>
-                                            <input
-                                                type="url"
-                                                value={ctaUrl}
-                                                onChange={(e) => setCtaUrl(e.target.value)}
-                                                className="w-full px-4 py-3 rounded-xl bg-white border border-blue-100 focus:ring-2 focus:ring-blue-500/20 text-slate-700 font-bold outline-none"
-                                                placeholder="https://exemplo.com"
-                                            />
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="url"
+                                                    value={ctaUrl}
+                                                    onChange={(e) => setCtaUrl(e.target.value)}
+                                                    className="flex-1 px-4 py-3 rounded-xl bg-white border border-blue-100 focus:ring-2 focus:ring-blue-500/20 text-slate-700 font-bold outline-none"
+                                                    placeholder="https://exemplo.com"
+                                                />
+                                                <button
+                                                    onClick={handleFetchMetadata}
+                                                    disabled={isFetchingMetadata || !ctaUrl}
+                                                    className={`px-4 rounded-xl font-bold text-xs uppercase transition-all flex items-center gap-2 ${isFetchingMetadata ? 'bg-slate-100 text-slate-400' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-500/20'}`}
+                                                >
+                                                    {isFetchingMetadata ? '...' : <><LayoutTemplate size={14} /> Prévia</>}
+                                                </button>
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 mt-2 italic px-1">Clique em "Prévia" para tentar carregar foto e título do site automaticamente.</p>
                                         </div>
                                     </div>
                                 )}
@@ -331,6 +375,7 @@ export default function InteractiveMessageModal({ isOpen, onClose, onSend }: Int
                                                     type="text"
                                                     value={btn.title}
                                                     onChange={(e) => handleUpdateButton(index, 'title', e.target.value)}
+                                                    maxLength={20}
                                                     className="w-full bg-transparent border-b-2 border-transparent focus:border-blue-500 font-bold text-slate-700 outline-none"
                                                     placeholder="Texto do Botão"
                                                 />

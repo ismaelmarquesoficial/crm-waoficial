@@ -59,6 +59,9 @@ app.use('/api/chat', chatRoutes);
 const settingsRoutes = require('./routes/settings');
 app.use('/api/settings', settingsRoutes);
 
+const utilsRoutes = require('./routes/utils');
+app.use('/api/utils', utilsRoutes);
+
 // Webhooks
 const whatsappWebhookRoutes = require('./webhooks/whatsapp/routes');
 app.use('/api/webhooks/whatsapp', whatsappWebhookRoutes);
