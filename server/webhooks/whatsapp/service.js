@@ -119,29 +119,46 @@ const WhatsAppService = {
             mediaType = 'image';
 
             try {
-                const storageDir = AudioStorage.getStoragePath(tenantId, accountId);
-                const fileNameBase = `inbound_${metaMediaId}`;
-                const finalPath = path.join(storageDir, `${fileNameBase}.jpg`);
+                // 1. Obter Token
+                const accountRes = await db.query("SELECT permanent_token FROM whatsapp_accounts WHERE id = $1", [accountId]);
+                if (accountRes.rows.length > 0) {
+                    const token = accountRes.rows[0].permanent_token;
 
-                if (!fs.existsSync(finalPath)) {
-                    console.log(`📸 Baixando imagem da Meta: ${metaMediaId}`);
-                    const downloadUrl = await Client.getMediaUrl(metaMediaId, channel.permanent_token);
-                    const streamRes = await Client.downloadMediaStream(downloadUrl, channel.permanent_token);
+                    // 2. Obter URL de download da Meta
+                    const mediaInfoRes = await axios.get(`https://graph.facebook.com/v19.0/${metaMediaId}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const downloadUrl = mediaInfoRes.data.url;
 
+                    // 3. Preparar storage
+                    const storageDir = fileManager.getStoragePath(tenantId, accountId);
+                    const fileNameBase = `inbound_img_${messageData.timestamp}`;
+                    const extension = 'jpg'; // Meta geralmente envia jpg
+                    const finalFileName = `${fileNameBase}.${extension}`;
+                    const finalPath = path.join(storageDir, finalFileName);
+
+                    // 4. Baixar
                     const writer = fs.createWriteStream(finalPath);
-                    streamRes.data.pipe(writer);
+                    const response = await axios({
+                        url: downloadUrl,
+                        method: 'GET',
+                        responseType: 'stream',
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
 
                     await new Promise((resolve, reject) => {
+                        response.data.pipe(writer);
                         writer.on('finish', resolve);
                         writer.on('error', reject);
                     });
-                }
 
-                mediaUrl = AudioStorage.getPublicUrl(tenantId, accountId, `${fileNameBase}.jpg`);
-                console.log(`📸 Imagem salva: ${mediaUrl}`);
+                    // 5. Definir URL pública
+                    mediaUrl = `/files/tenant_${tenantId}/channel_${accountId}/${finalFileName}`;
+                    console.log(`📸 Imagem salva: ${mediaUrl}`);
+                }
             } catch (err) {
-                console.error('❌ Erro ao baixar imagem:', err.message);
-                mediaUrl = null;
+                console.error('❌ Erro ao baixar imagem da Meta:', err.message);
+                body = '[Imagem - Erro no Download]';
             }
         } else {
             body = `[${type.toUpperCase()}]`;
