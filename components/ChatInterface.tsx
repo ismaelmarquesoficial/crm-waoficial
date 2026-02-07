@@ -1928,8 +1928,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
                     <div className={`max-w-[85%] md:max-w-[70%] text-sm relative transition-all duration-300 ${msg.type === MessageType.AUDIO
                       ? 'p-0 bg-transparent border-0 shadow-none'
-                      : `rounded-2xl px-4 py-2.5 md:px-5 md:py-3 shadow-sm hover:shadow-md ${isUser
-                        ? 'bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-tr-sm'
+                      : `rounded-2xl ${msg.type === MessageType.IMAGE ? 'p-1.5' : 'px-4 py-2.5 md:px-5 md:py-3'} shadow-sm hover:shadow-md ${isUser
+                        ? `${msg.type === MessageType.IMAGE ? 'gradient-border-user text-slate-800' : 'bg-gradient-to-r from-blue-600 to-teal-500 text-white'} rounded-tr-sm`
                         : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'}`
                       }`}>
                       {msg.type === MessageType.TEXT && <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
@@ -2068,7 +2068,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                       )}
 
                       {msg.type === MessageType.IMAGE && (
-                        <div className="mb-2 rounded-[20px] overflow-hidden shadow-[0_8px_25px_-5px_rgba(0,0,0,0.08)] border border-white/20 hover:shadow-[0_0_20px_rgba(6,104,225,0.12)] transition-all cursor-pointer group relative max-w-[260px] md:max-w-[320px]">
+                        <div className={`mb-0 rounded-[15px] overflow-hidden shadow-sm ${isUser ? 'border-none' : 'border border-slate-100'} hover:shadow-md transition-all cursor-pointer group relative max-w-[260px] md:max-w-[320px]`}>
                           <img
                             src={msg.content.startsWith('http') ? msg.content : `http://localhost:3001${msg.content}`}
                             alt="Attachment"
@@ -2090,13 +2090,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         </div>
                       )}
 
-                      <div className={`text-[10px] mt-1.5 flex items-center justify-end gap-1 select-none ${isUser && msg.type !== MessageType.AUDIO ? 'text-white/70' : 'text-slate-400'}`}>
+                      <div className={`text-[10px] mt-1.5 flex items-center justify-end gap-1 select-none ${(isUser && msg.type === MessageType.TEXT) ? 'text-white/70' : 'text-slate-400'}`}>
                         {msg.timestamp}
                         {msg.sender === 'user' && (
                           <span className="ml-0.5">
-                            {msg.status === 'read' ? <CheckCheck size={13} className={msg.type === MessageType.AUDIO ? "text-blue-500" : "text-white"} /> :
-                              msg.status === 'delivered' ? <CheckCheck size={13} className={msg.type === MessageType.AUDIO ? "text-slate-400" : "text-white/60"} /> :
-                                <Check size={13} className={msg.type === MessageType.AUDIO ? "text-slate-400" : "text-white/60"} />}
+                            {msg.status === 'read' ? <CheckCheck size={13} className={(msg.type === MessageType.AUDIO || msg.type === MessageType.IMAGE) ? "text-blue-500" : "text-white"} /> :
+                              msg.status === 'delivered' ? <CheckCheck size={13} className={(msg.type === MessageType.AUDIO || msg.type === MessageType.IMAGE) ? "text-slate-400" : "text-white/60"} /> :
+                                <Check size={13} className={(msg.type === MessageType.AUDIO || msg.type === MessageType.IMAGE) ? "text-slate-400" : "text-white/60"} />}
                           </span>
                         )}
                       </div>
