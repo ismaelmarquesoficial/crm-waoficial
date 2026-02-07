@@ -2053,58 +2053,117 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
                         return (
                           <div className="flex flex-col gap-1.5 min-w-[200px]">
-                            {/* Header */}
-                            {data.header?.type === 'text' && <p className="font-bold text-sm mb-1">{data.header.text}</p>}
-                            {data.header?.type === 'image' && data.header.image?.link && (
-                              <img src={data.header.image.link} alt="Header" className="rounded-lg mb-2 w-full object-cover max-h-32 shadow-sm" />
-                            )}
-                            {data.header?.type === 'video' && data.header.video?.link && (
-                              <div className="bg-slate-100 rounded-lg p-4 flex flex-col items-center justify-center mb-2 gap-2 text-slate-400">
-                                <Send size={24} className="rotate-90" />
-                                <span className="text-[10px] font-bold uppercase">Vídeo Interativo</span>
-                              </div>
-                            )}
-                            {data.header?.type === 'document' && data.header.document?.link && (
-                              <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 flex items-center gap-3 mb-2 shadow-sm">
-                                <FileText size={20} className="text-blue-500" />
-                                <div className="overflow-hidden">
-                                  <p className="text-xs font-bold text-slate-700 truncate">Documento Anexo</p>
-                                  <p className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Cabeçalho Interativo</p>
-                                </div>
-                              </div>
+                            {/* Header (Non-Carousel) */}
+                            {data.type !== 'carousel' && (
+                              <>
+                                {data.header?.type === 'text' && <p className="font-bold text-sm mb-1">{data.header.text}</p>}
+                                {data.header?.type === 'image' && data.header.image?.link && (
+                                  <img src={data.header.image.link} alt="Header" className="rounded-lg mb-2 w-full object-cover max-h-32 shadow-sm" />
+                                )}
+                                {data.header?.type === 'video' && (
+                                  <div className="bg-slate-100 rounded-lg p-4 flex flex-col items-center justify-center mb-2 gap-2 text-slate-400">
+                                    <Send size={24} className="rotate-90" />
+                                    <span className="text-[10px] font-bold uppercase">Vídeo Interativo</span>
+                                  </div>
+                                )}
+                                {data.header?.type === 'document' && data.header.document?.link && (
+                                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 flex items-center gap-3 mb-2 shadow-sm">
+                                    <FileText size={20} className="text-blue-500" />
+                                    <div className="overflow-hidden">
+                                      <p className="text-xs font-bold text-slate-700 truncate">Documento Anexo</p>
+                                      <p className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Cabeçalho</p>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
                             )}
 
-                            {/* Body */}
+                            {/* Body Text */}
                             <p className="whitespace-pre-wrap leading-relaxed">{data.body?.text}</p>
 
-                            {/* Footer */}
+                            {/* Footer Text */}
                             {data.footer?.text && <p className="text-[10px] opacity-70 mt-1">{data.footer.text}</p>}
 
-                            {/* Buttons / Actions */}
-                            <div className="mt-2 space-y-1.5">
-                              {data.type === 'button' && data.action?.buttons?.map((b: any, i: number) => (
-                                <div key={i} className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm transition-all ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
-                                  {b.reply?.title}
-                                </div>
-                              ))}
-                              {data.type === 'list' && (
+                            {/* CTA URL Button (Single) */}
+                            {data.type === 'cta_url' && (
+                              <a
+                                href={data.action?.parameters?.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`px-3 py-2 mt-2 rounded-xl text-center text-xs font-bold border shadow-sm flex items-center justify-center gap-2 no-underline transition-all ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50'}`}
+                              >
+                                <Globe size={14} />
+                                {data.action?.parameters?.display_text || 'Abrir Link'}
+                              </a>
+                            )}
+
+                            {/* Carousel */}
+                            {data.type === 'carousel' && (
+                              <div className="mt-3 -mx-1 flex gap-3 overflow-x-auto pb-4 px-1 snap-x scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                                {data.action?.cards?.map((card: any, ci: number) => (
+                                  <div key={ci} className="min-w-[200px] w-[200px] bg-white rounded-2xl shadow-md border border-slate-100 flex-shrink-0 snap-center overflow-hidden flex flex-col">
+                                    {/* Card Header */}
+                                    {card.header?.type === 'image' && card.header.image?.link && (
+                                      <img src={card.header.image.link} className="h-28 w-full object-cover" alt="Card Header" />
+                                    )}
+                                    {card.header?.type === 'video' && (
+                                      <div className="h-28 w-full bg-slate-100 flex items-center justify-center text-slate-400">
+                                        <Send size={24} className="rotate-90" />
+                                      </div>
+                                    )}
+
+                                    {/* Card Body */}
+                                    <div className="p-3 flex-1">
+                                      {card.body?.text && (
+                                        <p className="text-[13px] text-slate-700 leading-snug line-clamp-3 mb-2">{card.body.text}</p>
+                                      )}
+                                    </div>
+
+                                    {/* Card Actions */}
+                                    <div className="p-2 pt-0 flex flex-col gap-1 border-t border-slate-50">
+                                      {card.action?.name === 'cta_url' ? (
+                                        <a
+                                          href={card.action.parameters?.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="py-1.5 px-3 rounded-lg bg-emerald-50 text-emerald-600 text-[11px] font-bold text-center flex items-center justify-center gap-1.5 hover:bg-emerald-100 transition-colors no-underline"
+                                        >
+                                          <Globe size={12} /> {card.action.parameters?.display_text || 'Ver Link'}
+                                        </a>
+                                      ) : (
+                                        card.action?.buttons?.map((btn: any, bi: number) => (
+                                          <div key={bi} className="py-1.5 px-3 rounded-lg bg-blue-50 text-blue-600 text-[11px] font-bold text-center">
+                                            {btn.quick_reply?.title || 'Botão'}
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                                <div className="min-w-[10px] shrink-0"></div>
+                              </div>
+                            )}
+
+                            {/* Standard Buttons (Quick Reply) */}
+                            {data.type === 'button' && (
+                              <div className="mt-2 space-y-1.5">
+                                {data.action?.buttons?.map((b: any, i: number) => (
+                                  <div key={i} className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm transition-all ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
+                                    {b.reply?.title || b.quick_reply?.title}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* List Button */}
+                            {data.type === 'list' && (
+                              <div className="mt-2">
                                 <div className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm flex items-center justify-center gap-2 ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-slate-50 text-blue-600 border-slate-200'}`}>
                                   <List size={14} />
                                   {data.action?.button || 'Ver Opções'}
                                 </div>
-                              )}
-                              {data.type === 'cta_url' && (
-                                <a
-                                  href={data.action?.parameters?.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`px-3 py-2 rounded-xl text-center text-xs font-bold border shadow-sm flex items-center justify-center gap-2 no-underline transition-all ${msg.sender === 'user' ? 'bg-white/20 text-white border-white/20' : 'bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50'}`}
-                                >
-                                  <Globe size={14} />
-                                  {data.action?.parameters?.display_text || 'Abrir Link'}
-                                </a>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })()}
@@ -3454,51 +3513,54 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       }
 
       {/* Modal de Visualização Inteligente de Imagem (Lightbox) */}
-      {showImagePreview && previewImage && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-md animate-fade-in p-4 md:p-10"
-          onClick={() => setShowImagePreview(false)}
-        >
-          <div className="absolute top-6 right-6 z-10 flex gap-4">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(previewImage, '_blank');
-              }}
-              className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md border border-white/10"
-              title="Abrir original"
-            >
-              <Globe size={20} />
-            </button>
-            <button
-              onClick={() => setShowImagePreview(false)}
-              className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md border border-white/10"
-              title="Fechar"
-            >
-              <X size={24} />
-            </button>
-          </div>
-
+      {
+        showImagePreview && previewImage && (
           <div
-            className="relative max-w-5xl w-full h-full flex items-center justify-center animate-zoom-in"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-md animate-fade-in p-4 md:p-10"
+            onClick={() => setShowImagePreview(false)}
           >
-            <img
-              src={previewImage}
-              alt="Preview"
-              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border border-white/5"
-            />
+            <div className="absolute top-6 right-6 z-10 flex gap-4">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(previewImage, '_blank');
+                }}
+                className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md border border-white/10"
+                title="Abrir original"
+              >
+                <Globe size={20} />
+              </button>
+              <button
+                onClick={() => setShowImagePreview(false)}
+                className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md border border-white/10"
+                title="Fechar"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div
+              className="relative max-w-5xl w-full h-full flex items-center justify-center animate-zoom-in"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={previewImage}
+                alt="Preview"
+                className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border border-white/5"
+              />
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Interactive Modal */}
       <InteractiveMessageModal
         isOpen={showInteractiveModal}
         onClose={() => setShowInteractiveModal(false)}
         onSend={handleSendInteractive}
+        channelId={currentChatChannel}
       />
-    </div>
+    </div >
   );
 };
 
