@@ -205,7 +205,7 @@ router.get('/:contactId/messages', async (req, res) => {
         const contactCheck = await db.query("SELECT id FROM contacts WHERE id = $1 AND tenant_id = $2", [contactId, tenantId]);
         if (contactCheck.rows.length === 0) return res.status(404).json({ error: 'Contato não encontrado' });
 
-        let query = "SELECT * FROM chat_logs WHERE contact_id = $1";
+        let query = "SELECT *, file_path_mp3, file_path_ogg FROM chat_logs WHERE contact_id = $1";
         const params = [contactId];
 
         if (channelId && channelId !== 'all') {

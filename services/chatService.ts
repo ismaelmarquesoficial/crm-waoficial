@@ -15,7 +15,7 @@ export const chatService = {
 
         console.log(`[chatService] 📤 Enviando ${type} para o endpoint V2...`);
 
-        const response = await fetch(`http://localhost:3001/api/v2/messages/${contactId}/send-media`, {
+        const response = await fetch(`http://localhost:3001/api/whatsapp-official/audio/send/${contactId}`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`

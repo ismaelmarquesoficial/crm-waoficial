@@ -579,7 +579,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
           timestamp: localTime,
           status: m.status || 'read',
           fileName: m.file_name,
-          channelId: m.whatsapp_account_id // Added mapping
+          channelId: m.whatsapp_account_id,
+          file_path_mp3: m.file_path_mp3,
+          file_path_ogg: m.file_path_ogg
         };
       });
 
@@ -1881,9 +1883,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                     )}
                     {!isUser && !showAvatar && <div className="w-8 mr-2 shrink-0 hidden md:block"></div>}
 
-                    <div className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 md:px-5 md:py-3 shadow-sm text-sm relative transition-all duration-300 hover:shadow-md ${isUser
-                      ? 'bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-tr-sm'
-                      : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'
+                    <div className={`max-w-[85%] md:max-w-[70%] text-sm relative transition-all duration-300 ${msg.type === MessageType.AUDIO
+                      ? 'p-0 bg-transparent border-0 shadow-none'
+                      : `rounded-2xl px-4 py-2.5 md:px-5 md:py-3 shadow-sm hover:shadow-md ${isUser
+                        ? 'bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-tr-sm'
+                        : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'}`
                       }`}>
                       {msg.type === MessageType.TEXT && <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>}
 
@@ -2010,7 +2014,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
                       {msg.type === MessageType.AUDIO && (
                         <AudioPlayer
-                          src={msg.content.startsWith('http') ? msg.content : `http://localhost:3001${msg.content}`}
+                          src={(() => {
+                            const rawSrc = msg.file_path_mp3 || msg.content;
+                            if (!rawSrc || rawSrc === '[ÁUDIO]') return '';
+                            return rawSrc.startsWith('http') ? rawSrc : `http://localhost:3001${rawSrc}`;
+                          })()}
                           isUser={msg.sender === 'user'}
                         />
                       )}
@@ -2071,7 +2079,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                   <div className="flex items-center w-full p-2">
                     <div className="flex-1 flex items-center gap-3">
                       <div className="w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
-                      <span className="text-slate-600 font-bold font-mono text-sm">{formatDuration(recordingDuration)}</span>
+                      <span className="text-slate-600 font-bold font-mono text-sm">{formatDuration()}</span>
                       <span className="text-xs text-slate-400 font-medium">Gravando áudio...</span>
                     </div>
                     <div className="flex gap-2">
