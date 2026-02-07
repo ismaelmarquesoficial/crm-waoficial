@@ -13,7 +13,7 @@ const Client = {
     uploadMedia: async (phoneNumberId, token, filePath, mimeType) => {
         const formData = new FormData();
         formData.append('file', fs.createReadStream(filePath));
-        formData.append('type', 'audio/ogg; codecs=opus'); // Formato recomendado no guia
+        formData.append('type', mimeType);
         formData.append('messaging_product', 'whatsapp');
 
         const response = await axios.post(

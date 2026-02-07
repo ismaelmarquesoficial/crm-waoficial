@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const audioRoutes = require('./audio');
+const imageRoutes = require('./images');
 const webhookRoutes = require('./webhooks');
 
 /**
@@ -10,6 +11,7 @@ const webhookRoutes = require('./webhooks');
  */
 
 router.use('/audio', audioRoutes);
+router.use('/images', imageRoutes);
 router.use('/webhooks', webhookRoutes);
 
 module.exports = router;

@@ -115,11 +115,34 @@ const WhatsAppService = {
         }
         else if (type === 'image') {
             body = messageData.image.caption || '[Imagem]';
-            // Em produção, você baixaria a mídia usando o ID e salvaria no S3.
-            // Aqui vamos salvar o ID da mídia temporariamente ou null
             metaMediaId = messageData.image.id;
-            mediaUrl = messageData.image.id; // Mantendo comportamento anterior
-            // TODO: Implementar download de imagem similar ao de áudio
+            mediaType = 'image';
+
+            try {
+                const storageDir = AudioStorage.getStoragePath(tenantId, accountId);
+                const fileNameBase = `inbound_${metaMediaId}`;
+                const finalPath = path.join(storageDir, `${fileNameBase}.jpg`);
+
+                if (!fs.existsSync(finalPath)) {
+                    console.log(`📸 Baixando imagem da Meta: ${metaMediaId}`);
+                    const downloadUrl = await Client.getMediaUrl(metaMediaId, channel.permanent_token);
+                    const streamRes = await Client.downloadMediaStream(downloadUrl, channel.permanent_token);
+
+                    const writer = fs.createWriteStream(finalPath);
+                    streamRes.data.pipe(writer);
+
+                    await new Promise((resolve, reject) => {
+                        writer.on('finish', resolve);
+                        writer.on('error', reject);
+                    });
+                }
+
+                mediaUrl = AudioStorage.getPublicUrl(tenantId, accountId, `${fileNameBase}.jpg`);
+                console.log(`📸 Imagem salva: ${mediaUrl}`);
+            } catch (err) {
+                console.error('❌ Erro ao baixar imagem:', err.message);
+                mediaUrl = null;
+            }
         } else {
             body = `[${type.toUpperCase()}]`;
             if (messageData[type] && messageData[type].id) {

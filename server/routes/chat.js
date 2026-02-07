@@ -798,6 +798,7 @@ router.post('/:contactId/send-media', upload.single('file'), async (req, res) =>
     const file = req.file;
 
     if (!file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+    if (type === 'image') return res.status(400).json({ error: 'Envio de imagem deve usar a rota oficial v2.' });
 
     const tenantId = req.tenantId || (req.user && req.user.tenantId);
 
@@ -900,13 +901,12 @@ router.post('/:contactId/send-media', upload.single('file'), async (req, res) =>
 
         if (finalMediaType === 'audio') {
             payload.audio = { id: mediaId };
-        } else if (finalMediaType === 'image') {
-            payload.image = { id: mediaId, caption: caption || '' };
         } else if (finalMediaType === 'video') {
             payload.video = { id: mediaId, caption: caption || '' };
         } else if (finalMediaType === 'document') {
             payload.document = { id: mediaId, caption: caption || '', filename: file.originalname };
         } else {
+            // Fallback para outros tipos (serão tratados como documento)
             payload.type = 'document';
             payload.document = { id: mediaId, caption: caption || '', filename: file.originalname };
         }
