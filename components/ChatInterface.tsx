@@ -1967,18 +1967,43 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         ? `${msg.type === MessageType.IMAGE ? 'gradient-border-user text-slate-800' : 'bg-gradient-to-r from-blue-600 to-teal-500 text-white'} rounded-tr-sm`
                         : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'}`
                       }`}>
-                      {(msg.type === MessageType.TEXT || msg.type === MessageType.BUTTON_REPLY || msg.type === MessageType.LIST_REPLY || msg.type === MessageType.BUTTON) && (
-                        <p className="leading-relaxed whitespace-pre-wrap">
-                          {(() => {
-                            if (msg.type === MessageType.TEXT) return msg.content;
-                            try {
-                              const data = JSON.parse(msg.content);
-                              return data.text || data.title || msg.content;
-                            } catch (e) {
-                              return msg.content;
-                            }
-                          })()}
-                        </p>
+                      {msg.type === MessageType.TEXT && (
+                        <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                      )}
+
+                      {(msg.type === MessageType.BUTTON_REPLY || msg.type === MessageType.LIST_REPLY || msg.type === MessageType.BUTTON) && (
+                        <div className="flex flex-col min-w-[160px] max-w-full py-0.5">
+                          <div className="flex items-center gap-1.5 mb-1.5 opacity-70">
+                            <Zap size={10} className={isUser ? 'text-emerald-400' : 'text-blue-500'} strokeWidth={3} />
+                            <span className={`text-[9px] uppercase font-black tracking-widest ${isUser ? 'text-white/90' : 'text-slate-500'}`}>
+                              Resposta Interativa • {msg.type === MessageType.LIST_REPLY ? 'Lista' : 'Botão'}
+                            </span>
+                          </div>
+
+                          <div className={`px-3 py-2 rounded-xl border flex items-center gap-2.5 transition-all shadow-sm ${isUser ? 'bg-white/10 border-white/20 text-white' : 'bg-blue-50/50 border-blue-100/50 text-slate-800'}`}>
+                            <CheckCircle2 size={16} className={isUser ? 'text-emerald-400' : 'text-blue-600'} strokeWidth={2.5} />
+
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-bold text-sm leading-tight truncate">
+                                {(() => {
+                                  try {
+                                    const data = JSON.parse(msg.content);
+                                    return data.text || data.title || msg.content;
+                                  } catch (e) { return msg.content; }
+                                })()}
+                              </span>
+                              <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter mt-0.5">
+                                Ref: {(() => {
+                                  try {
+                                    const data = JSON.parse(msg.content);
+                                    let ref = data.payload || data.id || '---';
+                                    return ref.replace(/_/g, ' ');
+                                  } catch (e) { return '---'; }
+                                })()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       )}
 
                       {/* Template Messages */}
