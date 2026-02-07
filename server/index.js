@@ -39,6 +39,11 @@ app.use((req, res, next) => {
     next();
 });
 
+// Servir arquivos estáticos (Áudios, Imagens, etc.)
+// A URL será: http://localhost:3001/files/tenant_X/channel_Y/arquivo.mp3
+const path = require('path');
+app.use('/files', express.static(path.join(__dirname, 'storage')));
+
 // Routes
 app.use('/api/crm', crmRoutes);
 app.use('/api/admin', adminRoutes);
@@ -54,6 +59,10 @@ app.use('/api/settings', settingsRoutes);
 // Webhooks
 const whatsappWebhookRoutes = require('./webhooks/whatsapp/routes');
 app.use('/api/webhooks/whatsapp', whatsappWebhookRoutes);
+
+// --- NOVA ARQUITETURA (V2) ---
+const apiV2Routes = require('./routes/index');
+app.use('/api/v2', apiV2Routes);
 
 // Login Route
 app.post('/api/login', async (req, res) => {

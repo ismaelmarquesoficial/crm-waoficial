@@ -799,112 +799,159 @@ router.post('/:contactId/send-media', upload.single('file'), async (req, res) =>
 
     if (!file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
 
-    try {
-        const tenantId = req.tenantId || (req.user && req.user.tenantId);
+    const tenantId = req.tenantId || (req.user && req.user.tenantId);
 
-        // --- STICKY CHANNEL LOGIC (Simplified for Media) ---
-        let channelIdToUse = channelId || null;
+    // Utilitários de Arquivo
+    const fileManager = require('../utils/fileManager');
+
+    try {
+        // --- 1. Identificar Channel ---
+        let channelIdToUse = channelId;
+
+        // Se não veio channelId, tenta pegar o último usado ou preferencial (Lógica Sticky simplificada aqui)
         if (!channelIdToUse) {
             const lastMsg = await db.query("SELECT whatsapp_account_id FROM chat_logs WHERE contact_id = $1 ORDER BY timestamp DESC LIMIT 1", [contactId]);
             if (lastMsg.rows.length > 0) channelIdToUse = lastMsg.rows[0].whatsapp_account_id;
         }
 
-        let channelQuery = "SELECT id, phone_number_id, permanent_token FROM whatsapp_accounts WHERE tenant_id = $1 AND status = 'CONNECTED'";
-        let channelParams = [tenantId];
-        if (channelIdToUse) {
-            channelQuery += " AND id = $2";
-            channelParams.push(channelIdToUse);
-        } else {
-            channelQuery += " LIMIT 1";
+        const channelRes = await db.query("SELECT id, phone_number_id, permanent_token FROM whatsapp_accounts WHERE tenant_id = $1 AND id = $2", [tenantId, channelIdToUse]);
+        if (channelRes.rows.length === 0) {
+            // Fallback: pega o primeiro conectado
+            const fallback = await db.query("SELECT id, phone_number_id, permanent_token FROM whatsapp_accounts WHERE tenant_id = $1 AND status = 'CONNECTED' LIMIT 1", [tenantId]);
+            if (fallback.rows.length === 0) return res.status(400).json({ error: 'Nenhum canal conectado.' });
+            channelIdToUse = fallback.rows[0].id;
         }
 
-        const channelRes = await db.query(channelQuery, channelParams);
-        if (channelRes.rows.length === 0) return res.status(400).json({ error: 'Nenhum canal conectado.' });
-        const channel = channelRes.rows[0];
+        const channel = (channelRes.rows.length > 0) ? channelRes.rows[0] : (await db.query("SELECT id, phone_number_id, permanent_token FROM whatsapp_accounts WHERE tenant_id = $1 AND status = 'CONNECTED' LIMIT 1", [tenantId])).rows[0];
 
-        // 1. Upload para Meta Graph API
-        const metaUploadUrl = `https://graph.facebook.com/v19.0/${channel.phone_number_id}/media`;
 
-        const formData = new FormData();
-        formData.append('file', fs.createReadStream(file.path));
-        formData.append('type', file.mimetype); // important for Meta
-        formData.append('messaging_product', 'whatsapp');
+        // --- 2. Processamento do Arquivo ---
+        // Mover do temp (multer) para storage definitivo organizado
+        const storageDir = fileManager.getStoragePath(tenantId, channel.id);
+        const fileNameBase = `outbound_${Date.now()}`;
+        const ext = path.extname(file.originalname);
 
-        console.log(`📤 Uploading media to Meta: ${file.originalname} (${file.mimetype})`);
+        // Caminhos Absolutos para processamento
+        const originalPath = path.join(storageDir, `${fileNameBase}${ext}`);
 
-        const uploadRes = await axios.post(metaUploadUrl, formData, {
-            headers: {
-                Authorization: `Bearer ${channel.permanent_token}`,
-                ...formData.getHeaders()
-            }
-        });
+        // Mover arquivo do multer para o destino
+        fs.renameSync(file.path, originalPath);
 
-        const mediaId = uploadRes.data.id;
-        console.log(`✅ Media Uploaded! ID: ${mediaId}`);
+        let filePathOgg = null;
+        let filePathMp3 = null;
+        let finalMediaType = type || 'file';
+        let mediaId = null;
 
-        // 2. Enviar Mensagem usando ID
-        const contactRes = await db.query("SELECT phone FROM contacts WHERE id = $1", [contactId]);
-        const contactPhone = contactRes.rows[0].phone;
-        const sendUrl = `https://graph.facebook.com/v19.0/${channel.phone_number_id}/messages`;
+        // Lógica Específica de Áudio
+        if (type === 'audio' || file.mimetype.startsWith('audio/')) {
+            finalMediaType = 'audio';
+            const pathOgg = path.join(storageDir, `${fileNameBase}.ogg`);
+            const pathMp3 = path.join(storageDir, `${fileNameBase}.mp3`);
+
+            // Converter para OGG (Meta) e MP3 (Player)
+            await Promise.all([
+                fileManager.convertAudioToOgg(originalPath, pathOgg),
+                fileManager.convertAudioToMp3(originalPath, pathMp3)
+            ]);
+
+            // Caminhos Relativos para o Banco
+            filePathOgg = `/files/tenant_${tenantId}/channel_${channel.id}/${fileNameBase}.ogg`;
+            filePathMp3 = `/files/tenant_${tenantId}/channel_${channel.id}/${fileNameBase}.mp3`;
+
+            // Upload OGG para a Meta
+            const formData = new FormData();
+            formData.append('file', fs.createReadStream(pathOgg));
+            formData.append('type', 'audio/ogg');
+            formData.append('messaging_product', 'whatsapp');
+
+            const uploadMeta = await axios.post(
+                `https://graph.facebook.com/v19.0/${channel.phone_number_id}/media`,
+                formData,
+                { headers: { ...formData.getHeaders(), Authorization: `Bearer ${channel.permanent_token}` } }
+            );
+            mediaId = uploadMeta.data.id;
+
+        } else {
+            // Para outros arquivos
+            const formData = new FormData();
+            formData.append('file', fs.createReadStream(originalPath));
+            formData.append('type', file.mimetype);
+            formData.append('messaging_product', 'whatsapp');
+
+            const uploadMeta = await axios.post(
+                `https://graph.facebook.com/v19.0/${channel.phone_number_id}/media`,
+                formData,
+                { headers: { ...formData.getHeaders(), Authorization: `Bearer ${channel.permanent_token}` } }
+            );
+            mediaId = uploadMeta.data.id;
+        }
+
+
+        // --- 4. Enviar Mensagem ---
+        const contactData = await db.query("SELECT phone FROM contacts WHERE id = $1", [contactId]);
+        const contactPhone = contactData.rows[0].phone;
 
         let payload = {
             messaging_product: "whatsapp",
             recipient_type: "individual",
             to: contactPhone,
-            type: type
+            type: finalMediaType
         };
 
-        // Construct payload based on type with ID
-        if (['image', 'video', 'audio', 'document', 'sticker'].includes(type)) {
-            payload[type] = { id: mediaId };
-            if (caption) payload[type].caption = caption;
-            if (type === 'document' && req.body.filename) payload[type].filename = req.body.filename;
+        if (finalMediaType === 'audio') {
+            payload.audio = { id: mediaId };
+        } else if (finalMediaType === 'image') {
+            payload.image = { id: mediaId, caption: caption || '' };
+        } else if (finalMediaType === 'video') {
+            payload.video = { id: mediaId, caption: caption || '' };
+        } else if (finalMediaType === 'document') {
+            payload.document = { id: mediaId, caption: caption || '', filename: file.originalname };
         } else {
-            // Fallback usually shouldn't happen here
-            return res.status(400).json({ error: 'Invalid media type for upload flow' });
+            payload.type = 'document';
+            payload.document = { id: mediaId, caption: caption || '', filename: file.originalname };
         }
 
-        const sendRes = await axios.post(sendUrl, payload, {
-            headers: {
-                Authorization: `Bearer ${channel.permanent_token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        const wamid = sendRes.data.messages[0].id;
-
-        // 3. Salvar no Banco (Mantendo link local para histórico)
-        // file.path is absolute, let's make it relative to public for serving if needed
-        const relativePath = path.relative(path.join(__dirname, '..', 'public'), file.path).replace(/\\/g, '/');
-        const publicUrl = `/uploads/${relativePath}`; // Adjust based on how you serve static files
-
-        const timestamp = new Date();
-        const messageLogContent = `[${type.toUpperCase()}] (Local: ${file.originalname})${caption ? ' - ' + caption : ''}`;
-
-        // Insert using the same schema as nearby code
-        const insert = await db.query(
-            `INSERT INTO chat_logs 
-            (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, direction, status, channel, timestamp, created_at, media_url) 
-            VALUES ($1, $2, $3, $4, $5, $7, 'OUTBOUND', 'sent', 'WhatsApp Business', $6::timestamptz, $6::timestamptz, $8)
-            RETURNING *`,
-            [tenantId, contactId, channel.id, wamid, messageLogContent, timestamp.toISOString(), type, publicUrl]
+        const msgRes = await axios.post(
+            `https://graph.facebook.com/v19.0/${channel.phone_number_id}/messages`,
+            payload,
+            { headers: { Authorization: `Bearer ${channel.permanent_token}` } }
         );
 
-        // Emitir Socket
+        const wamid = msgRes.data.messages[0].id;
+
+
+        // --- 5. Salvar no Banco ---
+        const insert = await db.query(
+            `INSERT INTO chat_logs 
+            (tenant_id, contact_id, whatsapp_account_id, wamid, message, type, direction, status, channel, timestamp, created_at,
+             media_type, media_format, file_path_ogg, file_path_mp3, meta_media_id, file_name) 
+            VALUES ($1, $2, $3, $4, $5, $6, 'OUTBOUND', 'sent', 'WhatsApp Business', NOW(), NOW(),
+                    $7, $8, $9, $10, $11, $12)
+            RETURNING *`,
+            [
+                tenantId,
+                contactId,
+                channel.id,
+                wamid,
+                caption || (finalMediaType === 'audio' ? 'Áudio enviado' : 'Mídia enviada'),
+                finalMediaType,
+                finalMediaType,
+                (finalMediaType === 'audio' ? 'ogg' : null),
+                filePathOgg,
+                filePathMp3,
+                mediaId,
+                file.originalname
+            ]
+        );
+
         const io = req.app.get('io');
-        if (io) {
-            io.to(`tenant_${tenantId}`).emit('new_message', insert.rows[0]);
-        }
+        if (io) io.to(`tenant_${tenantId}`).emit('new_message', insert.rows[0]);
 
         res.json(insert.rows[0]);
 
     } catch (err) {
         console.error('Erro ao enviar mídia:', err);
-        // Clean up file on error?
-        if (file && fs.existsSync(file.path)) {
-            // fs.unlinkSync(file.path); // Uncomment to delete on error
-        }
-        res.status(500).json({ error: 'Erro ao enviar mídia' });
+        res.status(500).json({ error: 'Erro no processamento/envio da mídia.' });
     }
 });
 

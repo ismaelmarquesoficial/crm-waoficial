@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import { useAudioRecorder } from '../hooks/useAudioRecorder';
+import AudioPlayer from './AudioPlayer';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import {
   Search,
@@ -82,29 +84,6 @@ style.innerHTML = `
   }
 `;
 document.head.appendChild(style);
-
-const AudioPlayer = ({ isUser }: { isUser: boolean }) => {
-  const [playing, setPlaying] = useState(false);
-  return (
-    <div className={`flex items-center gap-3 px-3 py-2 rounded-2xl w-64 backdrop-blur-sm transition-all duration-300 ${isUser ? 'bg-white/20 hover:bg-white/30' : 'bg-slate-100/80 hover:bg-slate-200/80'}`}>
-      <button
-        onClick={() => setPlaying(!playing)}
-        className={`w-9 h-9 flex items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95 ${isUser ? 'bg-white text-blue-600' : 'bg-white text-slate-600'}`}
-      >
-        {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
-      </button>
-      <div className="flex-1 space-y-1.5">
-        <div className={`h-1.5 rounded-full w-full relative overflow-hidden ${isUser ? 'bg-white/30' : 'bg-slate-300'}`}>
-          <div className={`absolute left-0 top-0 bottom-0 w-1/3 rounded-full ${isUser ? 'bg-white' : 'bg-slate-500'} ${playing ? 'animate-progress-indeterminate' : ''}`}></div>
-        </div>
-        <div className={`flex justify-between text-[10px] font-medium ${isUser ? 'text-white/90' : 'text-slate-500'}`}>
-          <span>0:12</span>
-          <span>1:04</span>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 interface ChatInterfaceProps {
   initialContactId?: string | null;
@@ -224,6 +203,72 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
 
   // Interactive Modal State
   const [showInteractiveModal, setShowInteractiveModal] = useState(false);
+
+  // Audio Recording Hook
+  const {
+    isRecording,
+    recordingDuration,
+    startRecording,
+    cancelRecording,
+    finishRecording,
+    formatDuration
+  } = useAudioRecorder({
+    onRecordingComplete: () => {
+      if (activeContactId) {
+        fetchMessages(activeContactId);
+        fetchChats();
+      }
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // SOCKET.IO HANDLER (Status Updates & New Messages)
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const newSocket = io('http://localhost:3001', {
+      query: { token, tenantId: 'auto' }
+    });
+
+    newSocket.on('connect', () => {
+      console.log('🟢 Socket conectado:', newSocket.id);
+    });
+
+    // Handle New Messages
+    newSocket.on('new_message', (data: any) => {
+      console.log('📨 Nova mensagem (Socket):', data);
+
+      // If message belongs to active chat, append it
+      if (activeContactId && (Number(data.contact_id) === Number(activeContactId) || Number(data.contactId) === Number(activeContactId))) {
+        setMessages((prev) => {
+          // Avoid duplicates
+          if (prev.some(m => m.id === data.id)) return prev;
+          return [...prev, data];
+        });
+      }
+
+      // Always refresh chat list to show unread count / last message
+      // fetchChats(); // If feasible
+    });
+
+    // Handle Message Status (Sent, Delivered, Read)
+    newSocket.on('message_status_update', (data: any) => {
+      console.log('🔖 Status Update (Socket):', data);
+      if (activeContactId && (Number(data.contactId) === Number(activeContactId))) {
+        setMessages((prev) => prev.map(msg => {
+          // Match by ID or WAMID
+          if (msg.id === data.id || msg.wamid === data.wamid) {
+            return { ...msg, status: data.status };
+          }
+          return msg;
+        }));
+      }
+    });
+
+    return () => {
+      newSocket.disconnect();
+    };
+  }, [activeContactId]);
 
   useEffect(() => {
     // Fetch Company Variables on Mount
@@ -742,6 +787,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       console.error("Erro ao enviar mensagem interativa:", err);
       alert(`Falha ao enviar: ${err.message}`);
       return false;
+    }
+  };
+
+  // Audio recording functions now handled by useAudioRecorder hook
+  const handleFinishRecording = () => {
+    if (activeContactId) {
+      finishRecording(activeContactId, currentChatChannel);
     }
   };
 
@@ -1956,7 +2008,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
                         }
                       })()}
 
-                      {msg.type === MessageType.AUDIO && <AudioPlayer isUser={msg.sender === 'user'} />}
+                      {msg.type === MessageType.AUDIO && (
+                        <AudioPlayer
+                          src={msg.content.startsWith('http') ? msg.content : `http://localhost:3001${msg.content}`}
+                          isUser={msg.sender === 'user'}
+                        />
+                      )}
 
                       {msg.type === MessageType.IMAGE && (
                         <div className="mb-2 rounded-xl overflow-hidden shadow-sm cursor-pointer hover:opacity-95 transition-opacity">
@@ -2009,143 +2066,168 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
               )}
 
               <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex items-end p-1.5 md:p-2 transition-shadow hover:shadow-2xl">
-                <button
-                  onClick={() => setShowMediaModal(true)}
-                  className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                >
-                  <Paperclip size={20} />
-                </button>
-                <button
-                  onClick={() => setShowTemplateModal(true)}
-                  title="Usar Modelo"
-                  className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden md:block"
-                >
-                  <LayoutTemplate size={20} />
-                </button>
-                <button
-                  onClick={() => setShowInteractiveModal(true)}
-                  title="Mensagem Interativa (Botões/Lista)"
-                  className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden md:block"
-                >
-                  <List size={20} />
-                </button>
-                <button
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className={`hidden md:block p-3 rounded-full transition-colors ${showEmojiPicker ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}`}
-                >
-                  <Smile size={20} />
-                </button>
 
-                <div className="flex-1 py-2 md:py-3 px-2">
-                  {activeTemplate && (
-                    <div className="flex items-center gap-2 mb-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-lg px-3 py-2 w-full md:w-fit animate-fade-in-up shadow-sm">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                        <LayoutTemplate size={14} className="text-blue-600" />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider leading-none mb-0.5">Template Ativo</span>
-                        <span className="text-xs font-bold text-blue-700 truncate block">{activeTemplate.name}</span>
-                      </div>
-                      <button
-                        onClick={() => { setActiveTemplate(null); setInputText(''); }}
-                        className="ml-auto md:ml-2 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Cancelar Template"
-                      >
-                        <X size={14} />
+                {isRecording ? (
+                  <div className="flex items-center w-full p-2">
+                    <div className="flex-1 flex items-center gap-3">
+                      <div className="w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
+                      <span className="text-slate-600 font-bold font-mono text-sm">{formatDuration(recordingDuration)}</span>
+                      <span className="text-xs text-slate-400 font-medium">Gravando áudio...</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={cancelRecording} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors" title="Cancelar">
+                        <Trash2 size={20} />
+                      </button>
+                      <button onClick={handleFinishRecording} className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors shadow-md transform active:scale-95" title="Enviar">
+                        <Send size={18} className="ml-0.5" />
                       </button>
                     </div>
-                  )}
-                  <textarea
-                    ref={textareaRef}
-                    value={inputText}
-                    readOnly={!!activeTemplate}
-                    onChange={(e) => handleInputChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      // If quick replies dropdown is open and Enter is pressed
-                      if (showQuickReplies && filteredQuickReplies.length > 0 && e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        selectQuickReply(filteredQuickReplies[selectedQuickReplyIndex].message);
-                        return;
-                      }
-
-                      // Normal Enter behavior - send message
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-
-                      // Navigate quick replies with arrow keys
-                      if (showQuickReplies && filteredQuickReplies.length > 0) {
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          setSelectedQuickReplyIndex(prev =>
-                            prev < filteredQuickReplies.length - 1 ? prev + 1 : prev
-                          );
-                        }
-                        if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          setSelectedQuickReplyIndex(prev => prev > 0 ? prev - 1 : 0);
-                        }
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          setShowQuickReplies(false);
-                        }
-                      }
-                    }}
-                    placeholder={activeTemplate ? "Template selecionado (pronto para enviar)" : "Digite... (use / para respostas rápidas)"}
-                    className={`w-full bg-transparent border-none outline-none text-sm resize-none max-h-32 scrollbar-hide ${activeTemplate ? 'text-slate-500 italic cursor-not-allowed' : 'text-slate-800'}`}
-                    rows={1}
-                    style={{ minHeight: '24px' }}
-                  />
-
-                  {/* Quick Replies Dropdown */}
-                  {showQuickReplies && filteredQuickReplies.length > 0 && (
-                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-fade-in-up z-50 max-h-64 overflow-y-auto">
-                      <div className="p-2 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
-                        <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-2">
-                          <Zap size={12} />
-                          Respostas Rápidas
-                        </p>
-                      </div>
-                      <div className="p-2 space-y-1">
-                        {filteredQuickReplies.map((qr: any, index: number) => (
-                          <button
-                            key={qr.id}
-                            onMouseDown={(e) => {
-                              e.preventDefault(); // Prevent input blur
-                              selectQuickReply(qr.message);
-                            }}
-                            onMouseEnter={() => setSelectedQuickReplyIndex(index)}
-                            className={`w-full text-left p-3 rounded-xl transition-colors group border ${index === selectedQuickReplyIndex
-                              ? 'bg-amber-50 border-amber-200'
-                              : 'border-transparent hover:bg-amber-50 hover:border-amber-200'
-                              }`}
-                          >
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-mono font-bold text-amber-600">/{qr.shortcut}</span>
-                            </div>
-                            <p className="text-xs text-slate-600 line-clamp-2">{qr.message}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {inputText.trim() || activeTemplate ? (
-                  <button
-                    onClick={handleSendMessage}
-                    className="p-3 bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-full hover:shadow-lg hover:opacity-90 transition-all transform hover:scale-105 active:scale-95 m-1"
-                  >
-                    <Send size={18} fill="currentColor" className="ml-0.5" />
-                  </button>
+                  </div>
                 ) : (
-                  <button className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors">
-                    <Mic size={20} />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowMediaModal(true)}
+                      className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                    >
+                      <Paperclip size={20} />
+                    </button>
+                    <button
+                      onClick={() => setShowTemplateModal(true)}
+                      title="Usar Modelo"
+                      className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden md:block"
+                    >
+                      <LayoutTemplate size={20} />
+                    </button>
+                    <button
+                      onClick={() => setShowInteractiveModal(true)}
+                      title="Mensagem Interativa (Botões/Lista)"
+                      className="p-2 md:p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden md:block"
+                    >
+                      <List size={20} />
+                    </button>
+                    <button
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                      className={`hidden md:block p-3 rounded-full transition-colors ${showEmojiPicker ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}`}
+                    >
+                      <Smile size={20} />
+                    </button>
+
+                    <div className="flex-1 py-2 md:py-3 px-2">
+                      {activeTemplate && (
+                        <div className="flex items-center gap-2 mb-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-lg px-3 py-2 w-full md:w-fit animate-fade-in-up shadow-sm">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                            <LayoutTemplate size={14} className="text-blue-600" />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider leading-none mb-0.5">Template Ativo</span>
+                            <span className="text-xs font-bold text-blue-700 truncate block">{activeTemplate.name}</span>
+                          </div>
+                          <button
+                            onClick={() => { setActiveTemplate(null); setInputText(''); }}
+                            className="ml-auto md:ml-2 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Cancelar Template"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      )}
+                      <textarea
+                        ref={textareaRef}
+                        value={inputText}
+                        readOnly={!!activeTemplate}
+                        onChange={(e) => handleInputChange(e.target.value)}
+                        onKeyDown={(e) => {
+                          // If quick replies dropdown is open and Enter is pressed
+                          if (showQuickReplies && filteredQuickReplies.length > 0 && e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            selectQuickReply(filteredQuickReplies[selectedQuickReplyIndex].message);
+                            return;
+                          }
+
+                          // Normal Enter behavior - send message
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage();
+                          }
+
+                          // Navigate quick replies with arrow keys
+                          if (showQuickReplies && filteredQuickReplies.length > 0) {
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              setSelectedQuickReplyIndex(prev =>
+                                prev < filteredQuickReplies.length - 1 ? prev + 1 : prev
+                              );
+                            }
+                            if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              setSelectedQuickReplyIndex(prev => prev > 0 ? prev - 1 : 0);
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setShowQuickReplies(false);
+                            }
+                          }
+                        }}
+                        placeholder={activeTemplate ? "Template selecionado (pronto para enviar)" : "Digite... (use / para respostas rápidas)"}
+                        className={`w-full bg-transparent border-none outline-none text-sm resize-none max-h-32 scrollbar-hide ${activeTemplate ? 'text-slate-500 italic cursor-not-allowed' : 'text-slate-800'}`}
+                        rows={1}
+                        style={{ minHeight: '24px' }}
+                      />
+
+                      {/* Quick Replies Dropdown */}
+                      {showQuickReplies && filteredQuickReplies.length > 0 && (
+                        <div className="absolute bottom-full left-0 right-0 mb-2 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-fade-in-up z-50 max-h-64 overflow-y-auto">
+                          <div className="p-2 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
+                            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-2">
+                              <Zap size={12} />
+                              Respostas Rápidas
+                            </p>
+                          </div>
+                          <div className="p-2 space-y-1">
+                            {filteredQuickReplies.map((qr: any, index: number) => (
+                              <button
+                                key={qr.id}
+                                onMouseDown={(e) => {
+                                  e.preventDefault(); // Prevent input blur
+                                  selectQuickReply(qr.message);
+                                }}
+                                onMouseEnter={() => setSelectedQuickReplyIndex(index)}
+                                className={`w-full text-left p-3 rounded-xl transition-colors group border ${index === selectedQuickReplyIndex
+                                  ? 'bg-amber-50 border-amber-200'
+                                  : 'border-transparent hover:bg-amber-50 hover:border-amber-200'
+                                  }`}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs font-mono font-bold text-amber-600">/{qr.shortcut}</span>
+                                </div>
+                                <p className="text-xs text-slate-600 line-clamp-2">{qr.message}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {inputText.trim() || activeTemplate ? (
+                      <button
+                        onClick={handleSendMessage}
+                        className="p-3 bg-gradient-to-r from-blue-600 to-teal-500 text-white rounded-full hover:shadow-lg hover:opacity-90 transition-all transform hover:scale-105 active:scale-95 m-1"
+                      >
+                        <Send size={18} fill="currentColor" className="ml-0.5" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={startRecording}
+                        className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                      >
+                        <Mic size={20} />
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
+
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 p-4">
@@ -2159,1064 +2241,1088 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ initialContactId }) => {
       </div>
 
       {/* Modal de Informações do Contato */}
-      {showContactInfo && contactDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
-          <div ref={contactModalRef} className="bg-white rounded-[2.5rem] max-w-2xl w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-            {/* Header com degradê */}
-            <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
-              <div className="flex items-center gap-4 relative z-10">
-                <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/30 font-bold text-2xl text-white shadow-lg">
-                  {contactDetails.name?.charAt(0).toUpperCase() || '?'}
-                </div>
-                <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-white">{contactDetails.name}</h2>
-                  <div className="flex items-center gap-2 text-white/80 text-xs font-medium mt-1">
-                    <div className="flex items-center gap-1">
-                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                      Ativo no Sistema
+      {
+        showContactInfo && contactDetails && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
+            <div ref={contactModalRef} className="bg-white rounded-[2.5rem] max-w-2xl w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+              {/* Header com degradê */}
+              <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-6 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/30 font-bold text-2xl text-white shadow-lg">
+                    {contactDetails.name?.charAt(0).toUpperCase() || '?'}
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-2xl font-bold text-white">{contactDetails.name}</h2>
+                    <div className="flex items-center gap-2 text-white/80 text-xs font-medium mt-1">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                        Ativo no Sistema
+                      </div>
                     </div>
                   </div>
                 </div>
+                <button
+                  onClick={() => setShowContactInfo(false)}
+                  className="absolute top-6 right-6 p-2 hover:bg-white/20 rounded-xl text-white transition-all z-10"
+                >
+                  <X size={22} />
+                </button>
               </div>
-              <button
-                onClick={() => setShowContactInfo(false)}
-                className="absolute top-6 right-6 p-2 hover:bg-white/20 rounded-xl text-white transition-all z-10"
-              >
-                <X size={22} />
-              </button>
-            </div>
 
-            {/* Conteúdo do Modal */}
-            <div className="p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Informações de Contato</label>
+              {/* Conteúdo do Modal */}
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-6">
                     <div className="space-y-2">
-                      <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
-                        <div className="w-9 h-9 bg-gradient-to-r from-blue-600 to-teal-500 rounded-lg shadow-sm flex items-center justify-center text-white">
-                          <Phone size={16} />
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Informações de Contato</label>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
+                          <div className="w-9 h-9 bg-gradient-to-r from-blue-600 to-teal-500 rounded-lg shadow-sm flex items-center justify-center text-white">
+                            <Phone size={16} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">WhatsApp</p>
+                            <p className="text-xs font-bold text-slate-700">{contactDetails.phone}</p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">WhatsApp</p>
-                          <p className="text-xs font-bold text-slate-700">{contactDetails.phone}</p>
+                        <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
+                          <div className="w-9 h-9 bg-gradient-to-r from-blue-600 to-teal-500 rounded-lg shadow-sm flex items-center justify-center text-white">
+                            <Mail size={16} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</p>
+                            <p className="text-xs font-bold text-slate-700 truncate">{contactDetails.email || 'Não informado'}</p>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-slate-50">
-                        <div className="w-9 h-9 bg-gradient-to-r from-blue-600 to-teal-500 rounded-lg shadow-sm flex items-center justify-center text-white">
-                          <Mail size={16} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">E-mail</p>
-                          <p className="text-xs font-bold text-slate-700 truncate">{contactDetails.email || 'Não informado'}</p>
-                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tags do Cliente</label>
+                        <button
+                          onClick={() => {
+                            setShowTagManagerModal(true);
+                            fetchPipelinesData();
+                          }}
+                          className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
+                        >
+                          <Edit3 size={12} />
+                          Gerenciar
+                        </button>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 max-h-[120px] overflow-y-auto">
+                        {contactDetails.tags && contactDetails.tags.length > 0 ? (
+                          <TagBadge tags={contactDetails.tags} maxVisible={5} size="md" />
+                        ) : (
+                          <p className="text-[10px] text-slate-400 italic">Nenhuma tag atribuída</p>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tags do Cliente</label>
-                      <button
-                        onClick={() => {
-                          setShowTagManagerModal(true);
-                          fetchPipelinesData();
-                        }}
-                        className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
-                      >
-                        <Edit3 size={12} />
-                        Gerenciar
-                      </button>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 max-h-[120px] overflow-y-auto">
-                      {contactDetails.tags && contactDetails.tags.length > 0 ? (
-                        <TagBadge tags={contactDetails.tags} maxVisible={5} size="md" />
-                      ) : (
-                        <p className="text-[10px] text-slate-400 italic">Nenhuma tag atribuída</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Presença em Pipelines</label>
-                      <button
-                        onClick={() => {
-                          setShowPipelineModal(true);
-                          fetchPipelinesData();
-                        }}
-                        className="text-[10px] font-bold text-green-600 hover:text-green-700 flex items-center gap-1 transition-colors"
-                      >
-                        <Plus size={12} />
-                        Adicionar
-                      </button>
-                    </div>
-                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
-                      {contactDetails.deals && contactDetails.deals.length > 0 ? (
-                        contactDetails.deals.map((deal: any) => (
-                          <div key={deal.id} className="group p-3 bg-white rounded-xl border border-slate-100 shadow-sm border-l-4 hover:shadow-md transition-all" style={{ borderLeftColor: deal.stage_color }}>
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-0.5">
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase">{deal.pipeline_name}</p>
-                                  <Layers size={12} className="text-slate-300" />
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Presença em Pipelines</label>
+                        <button
+                          onClick={() => {
+                            setShowPipelineModal(true);
+                            fetchPipelinesData();
+                          }}
+                          className="text-[10px] font-bold text-green-600 hover:text-green-700 flex items-center gap-1 transition-colors"
+                        >
+                          <Plus size={12} />
+                          Adicionar
+                        </button>
+                      </div>
+                      <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                        {contactDetails.deals && contactDetails.deals.length > 0 ? (
+                          contactDetails.deals.map((deal: any) => (
+                            <div key={deal.id} className="group p-3 bg-white rounded-xl border border-slate-100 shadow-sm border-l-4 hover:shadow-md transition-all" style={{ borderLeftColor: deal.stage_color }}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">{deal.pipeline_name}</p>
+                                    <Layers size={12} className="text-slate-300" />
+                                  </div>
+                                  <p className="text-xs font-bold text-slate-700">{deal.stage_name}</p>
                                 </div>
-                                <p className="text-xs font-bold text-slate-700">{deal.stage_name}</p>
-                              </div>
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => {
-                                    setSelectedDeal(deal);
-                                    setSelectedPipeline(deal.pipeline_id);
-                                    setSelectedStage(deal.stage_id);
-                                    setShowMoveDealModal(true);
-                                    fetchPipelinesData();
-                                  }}
-                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                  title="Mover"
-                                >
-                                  <MoveRight size={14} />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setDealToDelete(deal.id);
-                                    setShowDeleteConfirm(true);
-                                  }}
-                                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                  title="Remover"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedDeal(deal);
+                                      setSelectedPipeline(deal.pipeline_id);
+                                      setSelectedStage(deal.stage_id);
+                                      setShowMoveDealModal(true);
+                                      fetchPipelinesData();
+                                    }}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    title="Mover"
+                                  >
+                                    <MoveRight size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setDealToDelete(deal.id);
+                                      setShowDeleteConfirm(true);
+                                    }}
+                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Remover"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
                               </div>
                             </div>
+                          ))
+                        ) : (
+                          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                            <p className="text-[10px] text-slate-400 italic">Não está em nenhum funil</p>
                           </div>
-                        ))
-                      ) : (
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
-                          <p className="text-[10px] text-slate-400 italic">Não está em nenhum funil</p>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 text-blue-700">
-                    <h4 className="text-xs font-bold uppercase mb-1 flex items-center gap-2">
-                      <TrendingUp size={14} />
-                      Última Atividade
-                    </h4>
-                    <p className="text-sm font-bold">
-                      {contactDetails.last_interaction ? new Date(contactDetails.last_interaction).toLocaleString() : 'Nunca interagiu'}
-                    </p>
+                    <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 text-blue-700">
+                      <h4 className="text-xs font-bold uppercase mb-1 flex items-center gap-2">
+                        <TrendingUp size={14} />
+                        Última Atividade
+                      </h4>
+                      <p className="text-sm font-bold">
+                        {contactDetails.last_interaction ? new Date(contactDetails.last_interaction).toLocaleString() : 'Nunca interagiu'}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Modal de Gerenciamento de Tags */}
-      {showTagManagerModal && contactDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[75] p-4 animate-fade-in">
-          <div ref={tagModalRef} className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-            <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-5 relative overflow-hidden">
-              <div className="flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-3">
-                  <TagIcon className="text-white" size={20} />
-                  <div>
-                    <h2 className="text-lg font-bold text-white">Gerenciar Tags</h2>
-                    <p className="text-[10px] text-white/80 font-medium">Organize por etiquetas personalizadas</p>
+      {
+        showTagManagerModal && contactDetails && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[75] p-4 animate-fade-in">
+            <div ref={tagModalRef} className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+              <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-5 relative overflow-hidden">
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="flex items-center gap-3">
+                    <TagIcon className="text-white" size={20} />
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Gerenciar Tags</h2>
+                      <p className="text-[10px] text-white/80 font-medium">Organize por etiquetas personalizadas</p>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => setShowTagManagerModal(false)}
+                    className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
+                  >
+                    <X size={18} strokeWidth={2.5} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowTagManagerModal(false)}
-                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
-                >
-                  <X size={18} strokeWidth={2.5} />
-                </button>
+              </div>
+              <div className="p-5">
+                <TagManager
+                  contactId={contactDetails.id}
+                  contactName={contactDetails.name}
+                  initialTags={contactDetails.tags || []}
+                  onTagsChange={handleTagsUpdate}
+                />
               </div>
             </div>
-            <div className="p-5">
-              <TagManager
-                contactId={contactDetails.id}
-                contactName={contactDetails.name}
-                initialTags={contactDetails.tags || []}
-                onTagsChange={handleTagsUpdate}
-              />
-            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Modal de Adicionar ao Pipeline */}
-      {showPipelineModal && contactDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[75] p-4 animate-fade-in">
-          <div ref={pipelineModalRef} className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-            <div className="bg-gradient-to-r from-green-600 to-emerald-500 p-5 relative overflow-hidden">
-              <div className="flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-3">
-                  <Layers className="text-white" size={20} />
-                  <div>
-                    <h2 className="text-lg font-bold text-white">Adicionar ao Pipeline</h2>
-                    <p className="text-[10px] text-white/80 font-medium">Mova o contato para um funil de vendas</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowPipelineModal(false)}
-                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
-                >
-                  <X size={18} strokeWidth={2.5} />
-                </button>
-              </div>
-            </div>
-            <div className="p-5 space-y-4">
-              {pipelines.length === 0 ? (
-                <div className="text-center py-8 space-y-4">
-                  <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto">
-                    <Layers size={32} className="text-green-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-700 mb-1">Nenhum Pipeline Cadastrado</h3>
-                    <p className="text-xs text-slate-500">Crie seu primeiro funil de vendas para organizar seus contatos</p>
+      {
+        showPipelineModal && contactDetails && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[75] p-4 animate-fade-in">
+            <div ref={pipelineModalRef} className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+              <div className="bg-gradient-to-r from-green-600 to-emerald-500 p-5 relative overflow-hidden">
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="flex items-center gap-3">
+                    <Layers className="text-white" size={20} />
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Adicionar ao Pipeline</h2>
+                      <p className="text-[10px] text-white/80 font-medium">Mova o contato para um funil de vendas</p>
+                    </div>
                   </div>
                   <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowCreatePipelineModal(true);
-                    }}
-                    className="w-full bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                    onClick={() => setShowPipelineModal(false)}
+                    className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
                   >
-                    <Plus size={18} strokeWidth={3} />
-                    Criar Primeiro Pipeline
+                    <X size={18} strokeWidth={2.5} />
                   </button>
                 </div>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Pipeline</label>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setShowCreatePipelineModal(true);
-                        }}
-                        className="text-[10px] font-bold text-green-600 hover:text-green-700 flex items-center gap-1"
-                      >
-                        <Plus size={12} />
-                        Novo
-                      </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {pipelines.length === 0 ? (
+                  <div className="text-center py-8 space-y-4">
+                    <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto">
+                      <Layers size={32} className="text-green-600" />
                     </div>
-                    <select
-                      value={selectedPipeline}
-                      onChange={(e) => {
-                        setSelectedPipeline(e.target.value);
-                        setSelectedStage('');
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-700 mb-1">Nenhum Pipeline Cadastrado</h3>
+                      <p className="text-xs text-slate-500">Crie seu primeiro funil de vendas para organizar seus contatos</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowCreatePipelineModal(true);
                       }}
-                      className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-green-500 transition-all outline-none"
+                      className="w-full bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
                     >
-                      <option value="">Escolha um funil...</option>
-                      {pipelines.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                      <Plus size={18} strokeWidth={3} />
+                      Criar Primeiro Pipeline
+                    </button>
                   </div>
-
-                  {selectedPipeline && (
+                ) : (
+                  <>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Estágio</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {pipelines.find(p => p.id === parseInt(selectedPipeline))?.stages.map((stage: any) => (
-                          <button
-                            key={stage.id}
-                            type="button"
-                            onClick={() => setSelectedStage(stage.id)}
-                            className={`p-3 rounded-xl text-[10px] font-bold border-2 transition-all flex flex-col items-center gap-1 ${String(selectedStage) === String(stage.id)
-                              ? 'bg-green-50 border-green-500 shadow-sm'
-                              : 'bg-white border-slate-100 text-slate-500'
-                              }`}
-                          >
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }}></div>
-                            {stage.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleMoveToPipeline();
-                    }}
-                    disabled={!selectedPipeline || !selectedStage}
-                    className="w-full bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
-                  >
-                    <Plus size={18} strokeWidth={3} />
-                    Adicionar ao Pipeline
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Confirmação de Remoção */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[85] p-4 animate-fade-in">
-          <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-            <div className="bg-gradient-to-r from-red-600 to-orange-500 p-5">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
-                  <AlertCircle className="text-white" size={24} strokeWidth={2.5} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">Confirmar Remoção</h2>
-                  <p className="text-[10px] text-white/80 font-medium">Esta ação não pode ser desfeita</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6">
-              <p className="text-sm text-slate-700 mb-6">
-                Tem certeza que deseja <span className="font-bold">remover este contato do pipeline</span>?
-                Esta ação é permanente e não poderá ser desfeita.
-              </p>
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDeleteConfirm(false);
-                    setDealToDelete(null);
-                  }}
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-all font-bold text-sm"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRemoveDeal}
-                  className="flex-1 bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
-                >
-                  <Trash2 size={18} strokeWidth={3} />
-                  Remover
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Mover Deal */}
-      {showMoveDealModal && selectedDeal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[75] p-4 animate-fade-in">
-          <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-            <div className="bg-gradient-to-r from-blue-600 to-emerald-500 p-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <MoveRight className="text-white" size={20} />
-                  <div>
-                    <h2 className="text-lg font-bold text-white">Mover Negócio</h2>
-                    <p className="text-[10px] text-white/80 font-medium">{selectedDeal.pipeline_name}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowMoveDealModal(false);
-                    setSelectedDeal(null);
-                    setSelectedPipeline('');
-                    setSelectedStage('');
-                  }}
-                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
-                >
-                  <X size={18} strokeWidth={2.5} />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-5 space-y-4">
-              {/* Seletor de Pipeline */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Escolher Funil</label>
-                <select
-                  value={selectedPipeline}
-                  onChange={(e) => {
-                    setSelectedPipeline(e.target.value);
-                    setSelectedStage('');
-                  }}
-                  className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                >
-                  {pipelines.map((pipeline: any) => (
-                    <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Seletor de Estágio */}
-              {selectedPipeline && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Estágio</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {pipelines.find(p => p.id === parseInt(selectedPipeline))?.stages.map((stage: any) => (
-                      <button
-                        key={stage.id}
-                        type="button"
-                        onClick={() => setSelectedStage(stage.id)}
-                        className={`p-3 rounded-xl text-[10px] font-bold border-2 transition-all flex flex-col items-center gap-1 ${String(selectedStage) === String(stage.id)
-                          ? 'bg-blue-50 border-blue-500 shadow-sm'
-                          : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                          }`}
-                      >
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }}></div>
-                        <span className="text-center leading-tight">{stage.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Botões */}
-              <div className="flex gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMoveDealModal(false);
-                    setSelectedDeal(null);
-                    setSelectedPipeline('');
-                    setSelectedStage('');
-                  }}
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-all font-bold text-sm"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleMoveDeal}
-                  disabled={!selectedStage}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-emerald-500 hover:from-blue-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
-                >
-                  <MoveRight size={18} strokeWidth={3} />
-                  Mover
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Criar Novo Pipeline */}
-      {showCreatePipelineModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-fade-in">
-          <div className="bg-white rounded-[2rem] max-w-lg w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20 max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-emerald-500 p-5 relative overflow-hidden sticky top-0 z-10">
-              <div className="flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-3">
-                  <Layers className="text-white" size={20} />
-                  <div>
-                    <h2 className="text-lg font-bold text-white">Criar Novo Pipeline</h2>
-                    <p className="text-[10px] text-white/80 font-medium">Configure seu funil de vendas</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowCreatePipelineModal(false)}
-                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
-                >
-                  <X size={18} strokeWidth={2.5} />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-5 space-y-4">
-              {/* Nome do Pipeline */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nome do Pipeline</label>
-                <input
-                  type="text"
-                  value={newPipelineName}
-                  onChange={(e) => setNewPipelineName(e.target.value)}
-                  placeholder="Ex: Vendas B2B, Atendimento..."
-                  className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                />
-              </div>
-
-              {/* Etapas */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Etapas do Funil</label>
-                  <button
-                    type="button"
-                    onClick={handleAddStage}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                  >
-                    <Plus size={12} />
-                    Adicionar
-                  </button>
-                </div>
-
-                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                  {newPipelineStages.map((stage, index) => (
-                    <div key={index} className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <input
-                        type="color"
-                        value={stage.color}
-                        onChange={(e) => handleUpdateStage(index, 'color', e.target.value)}
-                        className="w-10 h-10 rounded-lg cursor-pointer border-2 border-white shadow-sm"
-                      />
-                      <input
-                        type="text"
-                        value={stage.name}
-                        onChange={(e) => handleUpdateStage(index, 'name', e.target.value)}
-                        placeholder={`Etapa ${index + 1}`}
-                        className="flex-1 bg-white border-0 p-2.5 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                      />
-                      {newPipelineStages.length > 1 && (
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Pipeline</label>
                         <button
                           type="button"
-                          onClick={() => handleRemoveStage(index)}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowCreatePipelineModal(true);
+                          }}
+                          className="text-[10px] font-bold text-green-600 hover:text-green-700 flex items-center gap-1"
                         >
-                          <Trash2 size={16} />
+                          <Plus size={12} />
+                          Novo
                         </button>
-                      )}
+                      </div>
+                      <select
+                        value={selectedPipeline}
+                        onChange={(e) => {
+                          setSelectedPipeline(e.target.value);
+                          setSelectedStage('');
+                        }}
+                        className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-green-500 transition-all outline-none"
+                      >
+                        <option value="">Escolha um funil...</option>
+                        {pipelines.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Botões */}
-              <div className="flex gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowCreatePipelineModal(false)}
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-all font-bold text-sm"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCreatePipeline}
-                  disabled={isCreatingPipeline || !newPipelineName.trim()}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-emerald-500 hover:from-blue-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
-                >
-                  {isCreatingPipeline ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Criando...
-                    </>
-                  ) : (
-                    <>
+                    {selectedPipeline && (
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Estágio</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {pipelines.find(p => p.id === parseInt(selectedPipeline))?.stages.map((stage: any) => (
+                            <button
+                              key={stage.id}
+                              type="button"
+                              onClick={() => setSelectedStage(stage.id)}
+                              className={`p-3 rounded-xl text-[10px] font-bold border-2 transition-all flex flex-col items-center gap-1 ${String(selectedStage) === String(stage.id)
+                                ? 'bg-green-50 border-green-500 shadow-sm'
+                                : 'bg-white border-slate-100 text-slate-500'
+                                }`}
+                            >
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }}></div>
+                              {stage.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleMoveToPipeline();
+                      }}
+                      disabled={!selectedPipeline || !selectedStage}
+                      className="w-full bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                    >
                       <Plus size={18} strokeWidth={3} />
-                      Criar Pipeline
-                    </>
-                  )}
-                </button>
+                      Adicionar ao Pipeline
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
-      {/* Modal de Templates */}
-      {showTemplateModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[90] p-4 animate-fade-in">
-          <div className="bg-white rounded-[2rem] max-w-2xl w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20 max-h-[80vh] flex flex-col">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 shrink-0">
-              <div className="flex items-center justify-between">
+        )
+      }
+
+      {/* Modal de Confirmação de Remoção */}
+      {
+        showDeleteConfirm && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[85] p-4 animate-fade-in">
+            <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+              <div className="bg-gradient-to-r from-red-600 to-orange-500 p-5">
                 <div className="flex items-center gap-3">
-                  <LayoutTemplate className="text-white" size={20} />
+                  <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                    <AlertCircle className="text-white" size={24} strokeWidth={2.5} />
+                  </div>
                   <div>
-                    <h2 className="text-lg font-bold text-white">Modelos de Mensagem</h2>
-                    <p className="text-[10px] text-white/80 font-medium">Selecione um template para usar</p>
+                    <h2 className="text-lg font-bold text-white">Confirmar Remoção</h2>
+                    <p className="text-[10px] text-white/80 font-medium">Esta ação não pode ser desfeita</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowTemplateModal(false)}
-                  className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
-                >
-                  <X size={18} strokeWidth={2.5} />
-                </button>
               </div>
-              <div className="mt-4 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60" size={16} />
-                <input
-                  type="text"
-                  placeholder="Buscar modelo..."
-                  value={templateSearch}
-                  onChange={(e) => setTemplateSearch(e.target.value)}
-                  className="w-full bg-white/10 border border-white/20 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 transition-all input-placeholder-white"
-                />
+
+              <div className="p-6">
+                <p className="text-sm text-slate-700 mb-6">
+                  Tem certeza que deseja <span className="font-bold">remover este contato do pipeline</span>?
+                  Esta ação é permanente e não poderá ser desfeita.
+                </p>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDealToDelete(null);
+                    }}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-all font-bold text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemoveDeal}
+                    className="flex-1 bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                  >
+                    <Trash2 size={18} strokeWidth={3} />
+                    Remover
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div className="p-4 overflow-y-auto flex-1 space-y-3">
-              {isLoadingTemplates ? (
-                <div className="flex justify-center py-10">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                </div>
-              ) : templates.filter(t => t.name.toLowerCase().includes(templateSearch.toLowerCase())).length === 0 ? (
-                <div className="text-center py-10 text-slate-400">
-                  Nenhum modelo encontrado.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {templates.filter(t => t.name.toLowerCase().includes(templateSearch.toLowerCase())).map(template => (
-                    <button
-                      key={template.id}
-                      onClick={() => handleUseTemplate(template)}
-                      className="text-left group bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 rounded-xl p-4 transition-all hover:shadow-md"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-bold text-slate-700 text-sm group-hover:text-blue-700 truncate capitalize">
-                          {template.name.replace(/_/g, ' ')}
-                        </h3>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${template.status === 'APPROVED' ? 'bg-green-100 text-green-600' : 'bg-slate-200 text-slate-500'}`}>
-                          {template.status || 'Ativo'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed">
-                        {template.components?.find((c: any) => c.type === 'BODY')?.text || 'Sem conteúdo de texto visualizável.'}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 border-t border-slate-100 bg-slate-50 text-center">
-              <p className="text-[10px] text-slate-400">Templates são gerenciados no painel da Meta/WhatsApp.</p>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
+      {/* Modal de Mover Deal */}
+      {
+        showMoveDealModal && selectedDeal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[75] p-4 animate-fade-in">
+            <div className="bg-white rounded-[2rem] max-w-md w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+              <div className="bg-gradient-to-r from-blue-600 to-emerald-500 p-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <MoveRight className="text-white" size={20} />
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Mover Negócio</h2>
+                      <p className="text-[10px] text-white/80 font-medium">{selectedDeal.pipeline_name}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowMoveDealModal(false);
+                      setSelectedDeal(null);
+                      setSelectedPipeline('');
+                      setSelectedStage('');
+                    }}
+                    className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
+                  >
+                    <X size={18} strokeWidth={2.5} />
+                  </button>
+                </div>
+              </div>
 
-      {/* Modal de Preenchimento de Variáveis */}
-      {showVariableFillModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[95] p-4 animate-fade-in">
-          <div className="bg-white rounded-[2rem] max-w-lg w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-5">
-              <div className="flex items-center gap-3">
-                <Edit3 className="text-white" size={20} />
-                <div>
-                  <h2 className="text-lg font-bold text-white">Preencher Variáveis</h2>
-                  <p className="text-[10px] text-white/80 font-medium">Complete os campos faltantes do template</p>
+              <div className="p-5 space-y-4">
+                {/* Seletor de Pipeline */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Escolher Funil</label>
+                  <select
+                    value={selectedPipeline}
+                    onChange={(e) => {
+                      setSelectedPipeline(e.target.value);
+                      setSelectedStage('');
+                    }}
+                    className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                  >
+                    {pipelines.map((pipeline: any) => (
+                      <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Seletor de Estágio */}
+                {selectedPipeline && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Selecionar Estágio</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {pipelines.find(p => p.id === parseInt(selectedPipeline))?.stages.map((stage: any) => (
+                        <button
+                          key={stage.id}
+                          type="button"
+                          onClick={() => setSelectedStage(stage.id)}
+                          className={`p-3 rounded-xl text-[10px] font-bold border-2 transition-all flex flex-col items-center gap-1 ${String(selectedStage) === String(stage.id)
+                            ? 'bg-blue-50 border-blue-500 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                            }`}
+                        >
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }}></div>
+                          <span className="text-center leading-tight">{stage.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Botões */}
+                <div className="flex gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoveDealModal(false);
+                      setSelectedDeal(null);
+                      setSelectedPipeline('');
+                      setSelectedStage('');
+                    }}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-all font-bold text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMoveDeal}
+                    disabled={!selectedStage}
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-emerald-500 hover:from-blue-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                  >
+                    <MoveRight size={18} strokeWidth={3} />
+                    Mover
+                  </button>
                 </div>
               </div>
             </div>
+          </div>
+        )
+      }
 
-            <div className="p-6 space-y-4">
-              {pendingVariables.map((v, idx) => (
-                <div key={v} className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
-                    Variável {v}
-                  </label>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      placeholder={`Valor para ${v}...`}
-                      value={variableValues[v] || ''}
-                      onChange={(e) => setVariableValues(prev => ({ ...prev, [v]: e.target.value }))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
-                      autoFocus={idx === 0}
-                    />
-                    {/* Variáveis Personalizadas */}
-                    {companyVariables && Array.isArray(companyVariables.custom_variables) && companyVariables.custom_variables.length > 0 && (
-                      <div className="flex flex-wrap gap-2 px-1 mt-1">
-                        <span className="text-[9px] font-bold text-slate-300 w-full uppercase">Personalizadas</span>
-                        {companyVariables.custom_variables.map((cv: any) => (
-                          <button
-                            key={cv.key}
-                            onClick={() => setVariableValues(prev => ({ ...prev, [v]: cv.value }))}
-                            className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold hover:bg-indigo-100 transition-colors border border-indigo-100"
-                            title={cv.value}
-                          >
-                            {cv.key.replace(/_/g, ' ')}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+      {/* Modal de Criar Novo Pipeline */}
+      {
+        showCreatePipelineModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-fade-in">
+            <div className="bg-white rounded-[2rem] max-w-lg w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20 max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-emerald-500 p-5 relative overflow-hidden sticky top-0 z-10">
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="flex items-center gap-3">
+                    <Layers className="text-white" size={20} />
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Criar Novo Pipeline</h2>
+                      <p className="text-[10px] text-white/80 font-medium">Configure seu funil de vendas</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowCreatePipelineModal(false)}
+                    className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
+                  >
+                    <X size={18} strokeWidth={2.5} />
+                  </button>
+                </div>
+              </div>
 
-                    {/* Variáveis de Sistema */}
-                    {companyVariables && (
-                      <div className="flex flex-wrap gap-2 px-1 mt-2 border-t border-slate-100 pt-1">
-                        <span className="text-[9px] font-bold text-slate-300 w-full uppercase">Dados da Empresa</span>
-                        {[
-                          { l: 'Nome', v: companyVariables.company_name },
-                          { l: 'CNPJ', v: companyVariables.cnpj },
-                          { l: 'Telefone', v: companyVariables.contact_phone },
-                          { l: 'Email', v: companyVariables.contact_email },
-                          { l: 'PIX', v: companyVariables.pix_key },
-                        ].filter(i => i.v).map((item) => (
-                          <button
-                            key={item.l}
-                            onClick={() => setVariableValues(prev => ({ ...prev, [v]: String(item.v) }))}
-                            className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-[10px] font-bold hover:bg-slate-200 transition-colors"
-                            title={String(item.v)}
-                          >
-                            {item.l}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+              <div className="p-5 space-y-4">
+                {/* Nome do Pipeline */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nome do Pipeline</label>
+                  <input
+                    type="text"
+                    value={newPipelineName}
+                    onChange={(e) => setNewPipelineName(e.target.value)}
+                    placeholder="Ex: Vendas B2B, Atendimento..."
+                    className="w-full bg-slate-50 border-0 p-3.5 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                  />
+                </div>
 
-                    {/* Sugestões do Contato */}
-                    {activeContactId && contacts.find(c => String(c.id) === String(activeContactId))?.custom_fields && (
-                      <div className="flex flex-wrap gap-2 px-1 mt-1 border-t border-slate-100 pt-1">
-                        <span className="text-[9px] font-bold text-slate-300 w-full uppercase">Do Contato</span>
-                        {Object.entries(contacts.find(c => String(c.id) === String(activeContactId))?.custom_fields || {}).map(([key, value]) => (
+                {/* Etapas */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Etapas do Funil</label>
+                    <button
+                      type="button"
+                      onClick={handleAddStage}
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                    >
+                      <Plus size={12} />
+                      Adicionar
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                    {newPipelineStages.map((stage, index) => (
+                      <div key={index} className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <input
+                          type="color"
+                          value={stage.color}
+                          onChange={(e) => handleUpdateStage(index, 'color', e.target.value)}
+                          className="w-10 h-10 rounded-lg cursor-pointer border-2 border-white shadow-sm"
+                        />
+                        <input
+                          type="text"
+                          value={stage.name}
+                          onChange={(e) => handleUpdateStage(index, 'name', e.target.value)}
+                          placeholder={`Etapa ${index + 1}`}
+                          className="flex-1 bg-white border-0 p-2.5 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                        />
+                        {newPipelineStages.length > 1 && (
                           <button
-                            key={key}
-                            onClick={() => setVariableValues(prev => ({ ...prev, [v]: String(value) }))}
-                            className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold hover:bg-emerald-100 transition-colors"
-                            title={String(value)}
+                            type="button"
+                            onClick={() => handleRemoveStage(index)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                           >
-                            {key.replace(/_/g, ' ')}
-                          </button>
-                        ))}
-                        {contacts.find(c => String(c.id) === String(activeContactId))?.name && (
-                          <button
-                            onClick={() => setVariableValues(prev => ({ ...prev, [v]: contacts.find(c => String(c.id) === String(activeContactId))?.name || '' }))}
-                            className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold hover:bg-emerald-100 transition-colors"
-                          >
-                            Nome
+                            <Trash2 size={16} />
                           </button>
                         )}
                       </div>
-                    )}
+                    ))}
                   </div>
                 </div>
-              ))}
 
-              <div className="pt-4 flex gap-3">
-                <button
-                  onClick={() => setShowVariableFillModal(false)}
-                  className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={finalizeTemplate}
-                  className="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-md"
-                >
-                  Confirmar e Usar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Adicionar Contato Rápido */}
-      {showAddContactModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[90] p-4 animate-fade-in">
-          <div className="bg-white rounded-[2rem] max-w-sm w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
-            <div className="bg-gradient-to-r from-blue-500 to-cyan-500 p-5">
-              <div className="flex items-center gap-3">
-                <User className="text-white" size={20} />
-                <div>
-                  <h2 className="text-lg font-bold text-white">Novo Contato</h2>
-                  <p className="text-[10px] text-white/80 font-medium">Adicionar para iniciar conversa</p>
+                {/* Botões */}
+                <div className="flex gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreatePipelineModal(false)}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-all font-bold text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreatePipeline}
+                    disabled={isCreatingPipeline || !newPipelineName.trim()}
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-emerald-500 hover:from-blue-700 hover:to-emerald-600 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-400 text-white py-3 rounded-xl transition-all duration-300 shadow-lg active:scale-95 flex items-center justify-center gap-2 text-sm font-bold"
+                  >
+                    {isCreatingPipeline ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Criando...
+                      </>
+                    ) : (
+                      <>
+                        <Plus size={18} strokeWidth={3} />
+                        Criar Pipeline
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
-
-            <div className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nome</label>
-                <input
-                  type="text"
-                  value={newContactName}
-                  onChange={(e) => setNewContactName(e.target.value)}
-                  placeholder="Nome do contato..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Telefone (Whatsapp)</label>
-                <input
-                  type="tel"
-                  value={newContactPhone}
-                  onChange={(e) => setNewContactPhone(e.target.value)}
-                  placeholder="55999999999"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-                <p className="text-[10px] text-slate-400 px-1">Digite apenas números (com DDD).</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Canal de Envio (Opcional)</label>
-                <select
-                  value={newContactChannel}
-                  onChange={(e) => setNewContactChannel(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                >
-                  <option value="">Automático (Padrão)</option>
-                  {channels.map((ch: any) => (
-                    <option key={ch.id} value={ch.id}>
-                      {ch.instance_name || ch.verified_name || ch.phone_number_id}
-                    </option>
-                  ))}
-                </select>
+          </div>
+        )
+      }
+      {/* Modal de Templates */}
+      {
+        showTemplateModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[90] p-4 animate-fade-in">
+            <div className="bg-white rounded-[2rem] max-w-2xl w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20 max-h-[80vh] flex flex-col">
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 shrink-0">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <LayoutTemplate className="text-white" size={20} />
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Modelos de Mensagem</h2>
+                      <p className="text-[10px] text-white/80 font-medium">Selecione um template para usar</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowTemplateModal(false)}
+                    className="p-2 hover:bg-white/10 rounded-xl text-white transition-colors"
+                  >
+                    <X size={18} strokeWidth={2.5} />
+                  </button>
+                </div>
+                <div className="mt-4 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Buscar modelo..."
+                    value={templateSearch}
+                    onChange={(e) => setTemplateSearch(e.target.value)}
+                    className="w-full bg-white/10 border border-white/20 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 transition-all input-placeholder-white"
+                  />
+                </div>
               </div>
 
-              <div className="pt-4 flex gap-3">
-                <button
-                  onClick={() => setShowAddContactModal(false)}
-                  className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleQuickAddContact}
-                  disabled={isAddingContact || !newContactName || !newContactPhone}
-                  className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isAddingContact ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  ) : (
-                    <>
-                      <Check size={16} /> Salvar
-                    </>
-                  )}
-                </button>
+              <div className="p-4 overflow-y-auto flex-1 space-y-3">
+                {isLoadingTemplates ? (
+                  <div className="flex justify-center py-10">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : templates.filter(t => t.name.toLowerCase().includes(templateSearch.toLowerCase())).length === 0 ? (
+                  <div className="text-center py-10 text-slate-400">
+                    Nenhum modelo encontrado.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {templates.filter(t => t.name.toLowerCase().includes(templateSearch.toLowerCase())).map(template => (
+                      <button
+                        key={template.id}
+                        onClick={() => handleUseTemplate(template)}
+                        className="text-left group bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 rounded-xl p-4 transition-all hover:shadow-md"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-bold text-slate-700 text-sm group-hover:text-blue-700 truncate capitalize">
+                            {template.name.replace(/_/g, ' ')}
+                          </h3>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${template.status === 'APPROVED' ? 'bg-green-100 text-green-600' : 'bg-slate-200 text-slate-500'}`}>
+                            {template.status || 'Ativo'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed">
+                          {template.components?.find((c: any) => c.type === 'BODY')?.text || 'Sem conteúdo de texto visualizável.'}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-slate-100 bg-slate-50 text-center">
+                <p className="text-[10px] text-slate-400">Templates são gerenciados no painel da Meta/WhatsApp.</p>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
+
+
+      {/* Modal de Preenchimento de Variáveis */}
+      {
+        showVariableFillModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[95] p-4 animate-fade-in">
+            <div className="bg-white rounded-[2rem] max-w-lg w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-5">
+                <div className="flex items-center gap-3">
+                  <Edit3 className="text-white" size={20} />
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Preencher Variáveis</h2>
+                    <p className="text-[10px] text-white/80 font-medium">Complete os campos faltantes do template</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {pendingVariables.map((v, idx) => (
+                  <div key={v} className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
+                      Variável {v}
+                    </label>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder={`Valor para ${v}...`}
+                        value={variableValues[v] || ''}
+                        onChange={(e) => setVariableValues(prev => ({ ...prev, [v]: e.target.value }))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
+                        autoFocus={idx === 0}
+                      />
+                      {/* Variáveis Personalizadas */}
+                      {companyVariables && Array.isArray(companyVariables.custom_variables) && companyVariables.custom_variables.length > 0 && (
+                        <div className="flex flex-wrap gap-2 px-1 mt-1">
+                          <span className="text-[9px] font-bold text-slate-300 w-full uppercase">Personalizadas</span>
+                          {companyVariables.custom_variables.map((cv: any) => (
+                            <button
+                              key={cv.key}
+                              onClick={() => setVariableValues(prev => ({ ...prev, [v]: cv.value }))}
+                              className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold hover:bg-indigo-100 transition-colors border border-indigo-100"
+                              title={cv.value}
+                            >
+                              {cv.key.replace(/_/g, ' ')}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Variáveis de Sistema */}
+                      {companyVariables && (
+                        <div className="flex flex-wrap gap-2 px-1 mt-2 border-t border-slate-100 pt-1">
+                          <span className="text-[9px] font-bold text-slate-300 w-full uppercase">Dados da Empresa</span>
+                          {[
+                            { l: 'Nome', v: companyVariables.company_name },
+                            { l: 'CNPJ', v: companyVariables.cnpj },
+                            { l: 'Telefone', v: companyVariables.contact_phone },
+                            { l: 'Email', v: companyVariables.contact_email },
+                            { l: 'PIX', v: companyVariables.pix_key },
+                          ].filter(i => i.v).map((item) => (
+                            <button
+                              key={item.l}
+                              onClick={() => setVariableValues(prev => ({ ...prev, [v]: String(item.v) }))}
+                              className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-[10px] font-bold hover:bg-slate-200 transition-colors"
+                              title={String(item.v)}
+                            >
+                              {item.l}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Sugestões do Contato */}
+                      {activeContactId && contacts.find(c => String(c.id) === String(activeContactId))?.custom_fields && (
+                        <div className="flex flex-wrap gap-2 px-1 mt-1 border-t border-slate-100 pt-1">
+                          <span className="text-[9px] font-bold text-slate-300 w-full uppercase">Do Contato</span>
+                          {Object.entries(contacts.find(c => String(c.id) === String(activeContactId))?.custom_fields || {}).map(([key, value]) => (
+                            <button
+                              key={key}
+                              onClick={() => setVariableValues(prev => ({ ...prev, [v]: String(value) }))}
+                              className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold hover:bg-emerald-100 transition-colors"
+                              title={String(value)}
+                            >
+                              {key.replace(/_/g, ' ')}
+                            </button>
+                          ))}
+                          {contacts.find(c => String(c.id) === String(activeContactId))?.name && (
+                            <button
+                              onClick={() => setVariableValues(prev => ({ ...prev, [v]: contacts.find(c => String(c.id) === String(activeContactId))?.name || '' }))}
+                              className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold hover:bg-emerald-100 transition-colors"
+                            >
+                              Nome
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => setShowVariableFillModal(false)}
+                    className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={finalizeTemplate}
+                    className="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-md"
+                  >
+                    Confirmar e Usar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal de Adicionar Contato Rápido */}
+      {
+        showAddContactModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[90] p-4 animate-fade-in">
+            <div className="bg-white rounded-[2rem] max-w-sm w-full shadow-2xl animate-fade-in-up overflow-hidden border border-white/20">
+              <div className="bg-gradient-to-r from-blue-500 to-cyan-500 p-5">
+                <div className="flex items-center gap-3">
+                  <User className="text-white" size={20} />
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Novo Contato</h2>
+                    <p className="text-[10px] text-white/80 font-medium">Adicionar para iniciar conversa</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nome</label>
+                  <input
+                    type="text"
+                    value={newContactName}
+                    onChange={(e) => setNewContactName(e.target.value)}
+                    placeholder="Nome do contato..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Telefone (Whatsapp)</label>
+                  <input
+                    type="tel"
+                    value={newContactPhone}
+                    onChange={(e) => setNewContactPhone(e.target.value)}
+                    placeholder="55999999999"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 px-1">Digite apenas números (com DDD).</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Canal de Envio (Opcional)</label>
+                  <select
+                    value={newContactChannel}
+                    onChange={(e) => setNewContactChannel(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="">Automático (Padrão)</option>
+                    {channels.map((ch: any) => (
+                      <option key={ch.id} value={ch.id}>
+                        {ch.instance_name || ch.verified_name || ch.phone_number_id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => setShowAddContactModal(false)}
+                    className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleQuickAddContact}
+                    disabled={isAddingContact || !newContactName || !newContactPhone}
+                    className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isAddingContact ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    ) : (
+                      <>
+                        <Check size={16} /> Salvar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
 
       {/* Sistema de Notificação (Toast) */}
-      {notification && (
-        <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl animate-slide-up border border-white/20 backdrop-blur-md ${notification.type === 'success'
-          ? 'bg-emerald-500/90 text-white'
-          : 'bg-red-500/90 text-white'
-          }`}>
-          {notification.type === 'success' ? (
-            <CheckCircle2 size={20} className="text-emerald-100" />
-          ) : (
-            <AlertCircle size={20} className="text-red-100" />
-          )}
-          <p className="text-sm font-bold tracking-tight">{notification.message}</p>
-          <button
-            onClick={() => setNotification(null)}
-            className="ml-2 p-1 hover:bg-white/10 rounded-lg transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
+      {
+        notification && (
+          <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl animate-slide-up border border-white/20 backdrop-blur-md ${notification.type === 'success'
+            ? 'bg-emerald-500/90 text-white'
+            : 'bg-red-500/90 text-white'
+            }`}>
+            {notification.type === 'success' ? (
+              <CheckCircle2 size={20} className="text-emerald-100" />
+            ) : (
+              <AlertCircle size={20} className="text-red-100" />
+            )}
+            <p className="text-sm font-bold tracking-tight">{notification.message}</p>
+            <button
+              onClick={() => setNotification(null)}
+              className="ml-2 p-1 hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )
+      }
       {/* Delete Conversation Confirmation Modal */}
-      {showDeleteConvConfirm && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-fade-in-up border border-slate-100">
-            <div className="flex flex-col items-center text-center gap-4">
-              <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center text-red-500 mb-2">
-                <Trash2 size={24} />
+      {
+        showDeleteConvConfirm && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-fade-in-up border border-slate-100">
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center text-red-500 mb-2">
+                  <Trash2 size={24} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">Excluir Conversa?</h3>
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  Tem certeza que deseja apagar esta conversa? Todo o histórico e dados do contato serão removidos permanentemente.
+                </p>
+                <div className="flex gap-3 w-full mt-2">
+                  <button
+                    onClick={() => setShowDeleteConvConfirm(false)}
+                    className="flex-1 py-2.5 text-slate-600 font-bold text-sm bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDeleteConversation}
+                    disabled={isDeletingConv}
+                    className="flex-1 py-2.5 text-white font-bold text-sm bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-lg shadow-red-500/30 flex justify-center items-center gap-2"
+                  >
+                    {isDeletingConv ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Excluir'}
+                  </button>
+                </div>
               </div>
-              <h3 className="text-lg font-bold text-slate-800">Excluir Conversa?</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                Tem certeza que deseja apagar esta conversa? Todo o histórico e dados do contato serão removidos permanentemente.
-              </p>
-              <div className="flex gap-3 w-full mt-2">
+            </div>
+          </div>
+        )
+      }
+
+      {/* Media Modal */}
+      {
+        showMediaModal && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fade-in-up border border-slate-100">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <Paperclip size={20} className="text-blue-500" />
+                  Enviar Mídia
+                </h3>
                 <button
-                  onClick={() => setShowDeleteConvConfirm(false)}
+                  onClick={() => {
+                    setShowMediaModal(false);
+                    setMediaUrl('');
+                    setMediaCaption('');
+                    setMediaFilename('');
+                  }}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Media Type Selector */}
+              <div className="mb-4">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Tipo de Mídia</label>
+                <div className="grid grid-cols-5 gap-2">
+                  {(['image', 'video', 'audio', 'document', 'sticker'] as const).map(type => (
+                    <button
+                      key={type}
+                      onClick={() => setMediaType(type)}
+                      className={`p-3 rounded-xl border-2 transition-all ${mediaType === type
+                        ? 'border-blue-500 bg-blue-50 text-blue-600'
+                        : 'border-slate-200 hover:border-blue-300 text-slate-600'
+                        }`}
+                    >
+                      <div className="flex flex-col items-center gap-1">
+                        {type === 'image' && <ImageIcon size={20} />}
+                        {type === 'video' && <VideoIcon size={20} />}
+                        {type === 'audio' && <Mic size={20} />}
+                        {type === 'document' && <FileText size={20} />}
+                        {type === 'sticker' && <Smile size={20} />}
+                        <span className="text-[9px] font-bold uppercase">{type}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* URL Input */}
+              <div className="mb-4">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Arquivo ou URL</label>
+
+                {/* File Drop Area */}
+                <div
+                  className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer mb-2 flex flex-col items-center justify-center ${mediaFile ? 'border-green-500 bg-green-50' : 'border-slate-300 hover:border-blue-500 hover:bg-blue-50'
+                    }`}
+                  onClick={() => document.getElementById('media-file-input')?.click()}
+                >
+                  <input
+                    id="media-file-input"
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setMediaFile(file);
+                        setMediaUrl(URL.createObjectURL(file));
+                        if (file.name) setMediaFilename(file.name);
+                      }
+                    }}
+                  />
+                  {mediaFile ? (
+                    <>
+                      <CheckCircle2 size={32} className="text-green-500 mb-2" />
+                      <span className="text-sm font-bold text-slate-700">{mediaFile.name}</span>
+                      <span className="text-xs text-slate-500">{(mediaFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMediaFile(null);
+                          setMediaUrl('');
+                        }}
+                        className="mt-2 text-xs text-red-500 hover:underline"
+                      >
+                        Remover
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-12 h-12 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-2">
+                        <Upload size={24} />
+                      </div>
+                      <span className="text-sm font-bold text-slate-600">Clique para selecionar um arquivo</span>
+                      <span className="text-xs text-slate-400">ou arraste e solte aqui</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="text-center text-xs text-slate-400 mb-2 font-bold">- OU -</div>
+
+                <input
+                  type="url"
+                  value={!mediaFile ? mediaUrl : ''}
+                  readOnly={!!mediaFile}
+                  onChange={(e) => setMediaUrl(e.target.value)}
+                  placeholder="https://exemplo.com/arquivo.jpg"
+                  className={`w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm ${mediaFile ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
+                />
+              </div>
+
+              {/* Caption (for image, video, document) */}
+              {['image', 'video', 'document'].includes(mediaType) && (
+                <div className="mb-4">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Legenda (Opcional)</label>
+                  <textarea
+                    value={mediaCaption}
+                    onChange={(e) => setMediaCaption(e.target.value)}
+                    placeholder="Adicione uma descrição..."
+                    rows={2}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm resize-none"
+                  />
+                </div>
+              )}
+
+              {/* Filename (for document) */}
+              {mediaType === 'document' && (
+                <div className="mb-4">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Nome do Arquivo (Opcional)</label>
+                  <input
+                    type="text"
+                    value={mediaFilename}
+                    onChange={(e) => setMediaFilename(e.target.value)}
+                    placeholder="documento.pdf"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm"
+                  />
+                </div>
+              )}
+
+              {/* Preview */}
+              {mediaUrl && mediaType === 'image' && (
+                <div className="mb-4">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Preview</label>
+                  <img src={mediaUrl} alt="Preview" className="w-full h-48 object-cover rounded-xl border border-slate-200" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowMediaModal(false);
+                    setMediaUrl('');
+                    setMediaCaption('');
+                    setMediaFilename('');
+                  }}
                   className="flex-1 py-2.5 text-slate-600 font-bold text-sm bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
-                  onClick={handleDeleteConversation}
-                  disabled={isDeletingConv}
-                  className="flex-1 py-2.5 text-white font-bold text-sm bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-lg shadow-red-500/30 flex justify-center items-center gap-2"
+                  onClick={handleSendMedia}
+                  disabled={!mediaUrl.trim()}
+                  className="flex-1 py-2.5 text-white font-bold text-sm bg-blue-500 hover:bg-blue-600 rounded-xl transition-colors shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isDeletingConv ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Excluir'}
+                  Enviar
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Media Modal */}
-      {showMediaModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fade-in-up border border-slate-100">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Paperclip size={20} className="text-blue-500" />
-                Enviar Mídia
-              </h3>
-              <button
-                onClick={() => {
-                  setShowMediaModal(false);
-                  setMediaUrl('');
-                  setMediaCaption('');
-                  setMediaFilename('');
-                }}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Media Type Selector */}
-            <div className="mb-4">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Tipo de Mídia</label>
-              <div className="grid grid-cols-5 gap-2">
-                {(['image', 'video', 'audio', 'document', 'sticker'] as const).map(type => (
-                  <button
-                    key={type}
-                    onClick={() => setMediaType(type)}
-                    className={`p-3 rounded-xl border-2 transition-all ${mediaType === type
-                      ? 'border-blue-500 bg-blue-50 text-blue-600'
-                      : 'border-slate-200 hover:border-blue-300 text-slate-600'
-                      }`}
-                  >
-                    <div className="flex flex-col items-center gap-1">
-                      {type === 'image' && <ImageIcon size={20} />}
-                      {type === 'video' && <VideoIcon size={20} />}
-                      {type === 'audio' && <Mic size={20} />}
-                      {type === 'document' && <FileText size={20} />}
-                      {type === 'sticker' && <Smile size={20} />}
-                      <span className="text-[9px] font-bold uppercase">{type}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* URL Input */}
-            <div className="mb-4">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Arquivo ou URL</label>
-
-              {/* File Drop Area */}
-              <div
-                className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer mb-2 flex flex-col items-center justify-center ${mediaFile ? 'border-green-500 bg-green-50' : 'border-slate-300 hover:border-blue-500 hover:bg-blue-50'
-                  }`}
-                onClick={() => document.getElementById('media-file-input')?.click()}
-              >
-                <input
-                  id="media-file-input"
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setMediaFile(file);
-                      setMediaUrl(URL.createObjectURL(file));
-                      if (file.name) setMediaFilename(file.name);
-                    }
-                  }}
-                />
-                {mediaFile ? (
-                  <>
-                    <CheckCircle2 size={32} className="text-green-500 mb-2" />
-                    <span className="text-sm font-bold text-slate-700">{mediaFile.name}</span>
-                    <span className="text-xs text-slate-500">{(mediaFile.size / 1024 / 1024).toFixed(2)} MB</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMediaFile(null);
-                        setMediaUrl('');
-                      }}
-                      className="mt-2 text-xs text-red-500 hover:underline"
-                    >
-                      Remover
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-12 h-12 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-2">
-                      <Upload size={24} />
-                    </div>
-                    <span className="text-sm font-bold text-slate-600">Clique para selecionar um arquivo</span>
-                    <span className="text-xs text-slate-400">ou arraste e solte aqui</span>
-                  </>
-                )}
-              </div>
-
-              <div className="text-center text-xs text-slate-400 mb-2 font-bold">- OU -</div>
-
-              <input
-                type="url"
-                value={!mediaFile ? mediaUrl : ''}
-                readOnly={!!mediaFile}
-                onChange={(e) => setMediaUrl(e.target.value)}
-                placeholder="https://exemplo.com/arquivo.jpg"
-                className={`w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm ${mediaFile ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
-              />
-            </div>
-
-            {/* Caption (for image, video, document) */}
-            {['image', 'video', 'document'].includes(mediaType) && (
-              <div className="mb-4">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Legenda (Opcional)</label>
-                <textarea
-                  value={mediaCaption}
-                  onChange={(e) => setMediaCaption(e.target.value)}
-                  placeholder="Adicione uma descrição..."
-                  rows={2}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm resize-none"
-                />
-              </div>
-            )}
-
-            {/* Filename (for document) */}
-            {mediaType === 'document' && (
-              <div className="mb-4">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Nome do Arquivo (Opcional)</label>
-                <input
-                  type="text"
-                  value={mediaFilename}
-                  onChange={(e) => setMediaFilename(e.target.value)}
-                  placeholder="documento.pdf"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-sm"
-                />
-              </div>
-            )}
-
-            {/* Preview */}
-            {mediaUrl && mediaType === 'image' && (
-              <div className="mb-4">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Preview</label>
-                <img src={mediaUrl} alt="Preview" className="w-full h-48 object-cover rounded-xl border border-slate-200" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowMediaModal(false);
-                  setMediaUrl('');
-                  setMediaCaption('');
-                  setMediaFilename('');
-                }}
-                className="flex-1 py-2.5 text-slate-600 font-bold text-sm bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSendMedia}
-                disabled={!mediaUrl.trim()}
-                className="flex-1 py-2.5 text-white font-bold text-sm bg-blue-500 hover:bg-blue-600 rounded-xl transition-colors shadow-lg shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Enviar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Interactive Modal */}
       <InteractiveMessageModal
